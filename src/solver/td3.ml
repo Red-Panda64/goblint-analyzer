@@ -57,7 +57,7 @@ module Base =
       sides: VS.t HM.t;
       rho: S.Dom.t HM.t;
       wpoint: unit HM.t;
-      wpoint_gas: int HM.t;
+      var_gas: int HM.t; (** Tracks the widening gas of both side-effected and non-side-effected variables. Although they may have different gas budgets, they can be in the same map since no side-effected variable may ever have a rhs.*)
       stable: unit HM.t;
       side_dep: VS.t HM.t; (** Dependencies of side-effected variables. Knowing these allows restarting them and re-triggering all side effects. *)
       side_infl: VS.t HM.t; (** Influences to side-effected variables. Not normally in [infl], but used for restarting them. *)
@@ -74,7 +74,7 @@ module Base =
       sides = HM.create 10;
       rho = HM.create 10;
       wpoint = HM.create 10;
-      wpoint_gas = HM.create 10;
+      var_gas = HM.create 10;
       stable = HM.create 10;
       side_dep = HM.create 10;
       side_infl = HM.create 10;
@@ -88,7 +88,7 @@ module Base =
       Logs.debug "|stable|=%d" (HM.length data.stable);
       Logs.debug "|infl|=%d" (HM.length data.infl);
       Logs.debug "|wpoint|=%d" (HM.length data.wpoint);
-      Logs.debug "|wpoint_gas|=%d" (HM.length data.wpoint_gas);
+      Logs.debug "|var_gas|=%d" (HM.length data.var_gas);
       Logs.debug "|sides|=%d" (HM.length data.sides);
       Logs.debug "|side_dep|=%d" (HM.length data.side_dep);
       Logs.debug "|side_infl|=%d" (HM.length data.side_infl);
@@ -120,7 +120,7 @@ module Base =
         rho = HM.copy data.rho;
         stable = HM.copy data.stable;
         wpoint = HM.copy data.wpoint;
-        wpoint_gas = HM.copy data.wpoint_gas;
+        var_gas = HM.copy data.var_gas;
         infl = HM.copy data.infl;
         sides = HM.copy data.sides;
         side_infl = HM.copy data.side_infl;
@@ -160,10 +160,10 @@ module Base =
       HM.iter (fun k v ->
           HM.replace wpoint (S.Var.relift k) v
         ) data.wpoint;
-      let wpoint_gas = HM.create (HM.length data.wpoint_gas) in
+      let var_gas = HM.create (HM.length data.var_gas) in
       HM.iter (fun k v ->
-          HM.replace wpoint_gas (S.Var.relift k) v
-        ) data.wpoint_gas;
+          HM.replace var_gas (S.Var.relift k) v
+        ) data.var_gas;
       let infl = HM.create (HM.length data.infl) in
       HM.iter (fun k v ->
           HM.replace infl (S.Var.relift k) (VS.map S.Var.relift v)
@@ -197,7 +197,7 @@ module Base =
       HM.iter (fun k v ->
           HM.replace dep (S.Var.relift k) (VS.map S.Var.relift v)
         ) data.dep;
-      {st; infl; sides; rho; wpoint; wpoint_gas; stable; side_dep; side_infl; var_messages; rho_write; dep}
+      {st; infl; sides; rho; wpoint; var_gas; stable; side_dep; side_infl; var_messages; rho_write; dep}
 
     type phase = Widen | Narrow [@@deriving show] (* used in inner solve *)
 
@@ -227,6 +227,7 @@ module Base =
       let term  = GobConfig.get_bool "solvers.td3.term" in
       let side_widen = GobConfig.get_string "solvers.td3.side_widen" in
       let side_widen_gas = GobConfig.get_int "solvers.td3.side_widen_gas" in
+      let widen_gas = GobConfig.get_int "solvers.td3.widen_gas" in
       let space = GobConfig.get_bool "solvers.td3.space" in
       let cache = GobConfig.get_bool "solvers.td3.space_cache" in
       let called = HM.create 10 in
@@ -235,7 +236,7 @@ module Base =
       let sides = data.sides in
       let rho = data.rho in
       let wpoint = data.wpoint in
-      let wpoint_gas = data.wpoint_gas in
+      let var_gas = data.var_gas in
       let stable = data.stable in
 
       let narrow_reuse = GobConfig.get_bool "solvers.td3.narrow-reuse" in
@@ -285,6 +286,20 @@ module Base =
       let destabilize_ref: (S.v -> unit) ref = ref (fun _ -> failwith "no destabilize yet") in
       let destabilize x = !destabilize_ref x in (* must be eta-expanded to use changed destabilize_ref *)
 
+      let reduce_gas x default_gas =
+        let old_gas = HM.find_default var_gas x default_gas in
+        let decremented_gas = old_gas - 1 in
+        if decremented_gas >= 0 then (
+          if tracing then trace "gas" "reducing gas of %a: %d -> %d" S.Var.pretty_trace x old_gas decremented_gas;
+          HM.replace var_gas x decremented_gas
+        ) in
+      let has_gas x default_gas = (
+        let gas = HM.find_default var_gas x default_gas in
+        let has_gas = gas > 0 in
+        if tracing then trace "gas" "gas remaining for %a: %b (%d)" S.Var.pretty_trace x has_gas gas;
+        has_gas
+      ) in
+
       (* Same as destabilize, but returns true if it destabilized a called var, or a var in vs which was stable. *)
       let rec destabilize_vs x = (* TODO remove? Only used for side_widen cycle. *)
         if tracing then trace "sol2" "destabilize_vs %a" S.Var.pretty_trace x;
@@ -329,18 +344,24 @@ module Base =
           in
           HM.remove called x;
           let old = HM.find rho x in (* d from older solve *) (* find old value after eq since wpoint restarting in eq/eval might have changed it meanwhile *)
+
           let wpd = (* d after widen/narrow (if wp) *)
             if not wp then eqd
-            else if term then
-              (* TODO: widening gas *)
-              match phase with
-              | Widen -> S.Dom.widen old (S.Dom.join old eqd)
-              | Narrow when GobConfig.get_bool "exp.no-narrow" -> old (* no narrow *)
-              | Narrow ->
-                (* assert S.Dom.(leq eqd old || not (leq old eqd)); (* https://github.com/goblint/analyzer/pull/490#discussion_r875554284 *) *)
-                S.Dom.narrow old eqd
-            else
-              box old eqd
+            else (
+              let has_grown = not (S.Dom.leq eqd old) in
+              if has_grown && not (term && phase == Narrow) then reduce_gas x widen_gas;
+              if term then
+                match phase with
+                | Widen -> if has_gas x widen_gas then eqd else S.Dom.widen old (S.Dom.join old eqd)
+                | Narrow when GobConfig.get_bool "exp.no-narrow" -> old (* no narrow *)
+                | Narrow ->
+                  (* assert S.Dom.(leq eqd old || not (leq old eqd)); (* https://github.com/goblint/analyzer/pull/490#discussion_r875554284 *) *)
+                  S.Dom.narrow old eqd
+              else (
+                (* This has_grown check is performed again by box, but unfortunately the gas check cannot be pulled into the warrowing operator, as it is not td3 specific. *)
+                if has_grown && has_gas x widen_gas then eqd else box old eqd
+              )
+            )
           in
           if tracing then trace "sol" "Var: %a (wp: %b)\nOld value: %a\nEqd: %a\nNew value: %a" S.Var.pretty_trace x wp S.Dom.pretty old S.Dom.pretty eqd S.Dom.pretty wpd;
           if cache then (
@@ -361,7 +382,6 @@ module Base =
               if tracing then trace "sol2" "solve still unstable %a" S.Var.pretty_trace x;
               (solve[@tailcall]) x Widen
             ) else (
-              (* TODO: widening gas *)
               if term && phase = Widen && HM.mem wpoint x then ( (* TODO: or use wp? *)
                 if tracing then trace "sol2" "solve switching to narrow %a" S.Var.pretty_trace x;
                 if tracing then trace "sol2" "stable remove %a" S.Var.pretty_trace x;
@@ -432,10 +452,9 @@ module Base =
           r
         in
         let old_sides = HM.find_default sides y VS.empty in
-        let widen_if_no_gas a b y = 
+        let widen_if_no_gas a b y =
           (* If y still has widening gas, widening will not be performed. *)
-          let has_gas = Option.map_default (fun gas -> gas > 0) (side_widen_gas > 0) (HM.find_option wpoint_gas y) in
-          if has_gas then S.Dom.join a b else widen a b
+          if has_gas y side_widen_gas then S.Dom.join a b else widen a b
         in
         (* Combination operator for merging the old value of y with the incoming side-effect.
           If sides-local is configured, widen only if the unknown causing the side-effect has
@@ -458,11 +477,10 @@ module Base =
         HM.replace stable y ();
         if not (S.Dom.leq tmp old) then (
           if tracing && not (S.Dom.is_bot old) then trace "solside" "side to %a (wpx: %b) from %a: %a -> %a" S.Var.pretty_trace y (HM.mem wpoint y) (Pretty.docOpt (S.Var.pretty_trace ())) x S.Dom.pretty old S.Dom.pretty tmp;
-          if tracing && not (S.Dom.is_bot old) then trace "solchange" "side to %a (wpx: %b) from %a: %a" S.Var.pretty_trace y (HM.mem wpoint y) (Pretty.docOpt (S.Var.pretty_trace ())) x S.Dom.pretty_diff (tmp, old); 
+          if tracing && not (S.Dom.is_bot old) then trace "solchange" "side to %a (wpx: %b) from %a: %a" S.Var.pretty_trace y (HM.mem wpoint y) (Pretty.docOpt (S.Var.pretty_trace ())) x S.Dom.pretty_diff (tmp, old);
 
           (* y has grown. Reduce widening gas! *)
-          HM.replace wpoint_gas y (let decremented_gas = HM.find_default wpoint_gas y side_widen_gas - 1 in
-          if decremented_gas < 0 then 0 else decremented_gas);
+          reduce_gas y side_widen_gas;
 
           let sided = match x with
             | Some x ->
@@ -1074,7 +1092,7 @@ module Base =
       print_data_verbose data "Data after postsolve";
 
       verify_data data;
-      (rho, {st; infl; sides; rho; wpoint; wpoint_gas; stable; side_dep; side_infl; var_messages; rho_write; dep})
+      (rho, {st; infl; sides; rho; wpoint; var_gas; stable; side_dep; side_infl; var_messages; rho_write; dep})
   end
 
 (** TD3 with no hooks. *)
