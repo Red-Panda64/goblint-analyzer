@@ -2293,7 +2293,7 @@
               "description":
                 "Delay widening non-globals, i.e. unknowns with right hand sides. With a widening gas of N, the solver will perform widening only once unknown has grown N times. A value of 0 behaves as before the feature was introduced.",
               "type": "integer",
-              "default": 5
+              "default": 0
             },
             "space": {
               "title": "solvers.td3.space",
