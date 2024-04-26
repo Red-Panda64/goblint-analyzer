@@ -67,6 +67,120 @@ module Base =
 
     type marshal = solver_data
 
+    module type WPointSelect =
+    sig
+      type data
+
+      val create_data: (S.v -> bool) -> (S.v -> S.v -> unit) -> data
+      val side: data -> S.v -> S.v option -> unit
+      val notify_destabilized: data -> S.v list -> S.v -> bool -> bool -> unit
+      val veto_widen: data -> unit HM.t -> VS.t -> S.v -> S.v option -> bool
+      val should_mark_wpoint: data -> unit HM.t -> VS.t -> S.v -> S.v option -> bool
+    end
+    module WpsAlways : WPointSelect =
+    struct
+      type data = unit
+
+      let create_data _ _ = ()
+      let side _ _ _ = ()
+      let notify_destabilized _ _ _ _ _ = ()
+      let veto_widen _ _ _ _ _ = false
+      let should_mark_wpoint _ _ _ _ _ = true
+    end
+    module WpsNever : WPointSelect =
+    struct
+      type data = unit
+
+      let create_data _ _ = ()
+      let side _ _ _ = ()
+      let notify_destabilized _ _ _ _ _ = ()
+      let veto_widen _ _ _ _ _ = false
+      let should_mark_wpoint _ _ _ _ _ = false
+    end
+    module WpsSidesLocal : WPointSelect =
+    struct
+      type data = unit
+
+      let create_data _ _ = ()
+      let side _ _ _ = ()
+      let notify_destabilized _ _ _ _ _ = ()
+      let veto_widen state called old_sides y x =
+        match x with
+        | None -> false
+        | Some x when VS.mem x old_sides -> false
+        | _ -> true
+      let should_mark_wpoint state called old_sides y x = true
+    end
+    module WpsSidesPP : WPointSelect =
+    struct
+      type data = unit
+      let create_data _ _ = ()
+      let side _ _ _ = ()
+      let notify_destabilized _ _ _ _ _ = ()
+      let veto_widen state called old_sides y x = false
+      let should_mark_wpoint state called old_sides y x = match x with
+        | Some x ->
+          let n = S.Var.node x in
+          VS.exists (fun v -> Node.equal (S.Var.node v) n) old_sides
+        | None -> false
+        (* TODO: This is consistent with the previous implementation, but if multiple side-effects come in with x = None,
+            the leaf will never be widened. This is different from SidesLocal *)
+    end
+    module WpsSides : WPointSelect =
+    struct
+      type data = unit
+
+      let create_data _ _ = ()
+      let side _ _ _ = ()
+      let notify_destabilized _ _ _ _ _ = ()
+      let veto_widen state called old_sides y x = false
+      let should_mark_wpoint state called old_sides y x = match x with | Some(x) -> VS.mem x old_sides | None -> true
+    end
+    (* TODO: The following two don't check if a vs got destabilized which may be a problem. *)
+    module WpsUnstableSelf : WPointSelect =
+    struct
+      type data = { is_stable: S.v -> bool; add_infl: S.v -> S.v -> unit }
+
+      let create_data is_stable add_infl = { is_stable; add_infl }
+      let side data y x = (match x with None -> () | Some x -> data.add_infl x y)
+      let notify_destabilized _ _ _ _ _ = ()
+      let veto_widen state called old_sides y x = false
+      (* TODO test/remove. Side to y destabilized itself via some infl-cycle. The above add_infl is only required for this option. Check for which examples this is problematic! *)
+      let should_mark_wpoint state called old_sides y x = not (state.is_stable y) (* this is very expensive since it folds over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
+    end
+    module WpsUnstableCalled : WPointSelect =
+    struct
+      type data = { is_stable: S.v -> bool }
+
+      let create_data is_stable _ = { is_stable }
+      let side _ _ _ = ()
+      let notify_destabilized _ _ _ _ _ = ()
+      let veto_widen state called old_sides y x = false
+      (* TODO test/remove. Widen if any called var (not just y) is no longer stable. Expensive! *)
+      let should_mark_wpoint state called old_sides y x = exists_key (neg (state.is_stable)) called
+    end
+    module WpsCycle : WPointSelect =
+    struct
+      type data = { cycle: bool ref }
+
+      let create_data is_stable _ = { cycle = ref false; }
+      let side state y x = state.cycle := false
+      let notify_destabilized state vs x is_called was_stable =
+        if is_called then (
+          if tracing then trace "side_widen" "cycle: destabilized called var %a" S.Var.pretty_trace x;
+          state.cycle := true;
+        )
+        else if (was_stable && List.mem_cmp S.Var.compare x vs) then (
+          if tracing then trace "side_widen" "cycle: destabilized stable start var %a" S.Var.pretty_trace x;
+          state.cycle := true
+        )
+      let veto_widen state called old_sides y x = false
+      (* destabilized a called or start var. Problem: two partial context calls will be precise, but third call will widen the state. *)
+      (* if this side destabilized some of the initial unknowns vs, there may be a side-cycle between vs and we should make y a wpoint *)
+      let should_mark_wpoint state called old_sides y x =
+        if tracing && !(state.cycle) then trace "side_widen" "cycle: should mark wpoint %a" S.Var.pretty_trace y;
+        !(state.cycle)
+    end
     let create_empty_data () = {
       st = [];
       infl = HM.create 10;
@@ -217,7 +331,6 @@ module Base =
       in
 
       let term  = GobConfig.get_bool "solvers.td3.term" in
-      let side_widen = GobConfig.get_string "solvers.td3.side_widen" in
       let default_side_widen_gas = GobConfig.get_int "solvers.td3.side_widen_gas" in
       let default_widen_gas = GobConfig.get_int "solvers.td3.widen_gas" in
       let space = GobConfig.get_bool "solvers.td3.space" in
@@ -253,6 +366,20 @@ module Base =
       let var_messages = data.var_messages in
       let rho_write = data.rho_write in
       let dep = data.dep in
+
+      let choose_wpoint_select: string -> (module WPointSelect) = fun conf -> match conf with
+        | "always" -> (module WpsAlways)
+        | "never" -> (module WpsNever)
+        | "sides-local" -> (module WpsSidesLocal)
+        | "sides" -> (module WpsSides)
+        | "sides-pp" -> (module WpsSidesPP)
+        | "unstable-self" -> (module WpsUnstableSelf)
+        | "unstable-called" -> (module WpsUnstableCalled)
+        | "cycle" -> (module WpsCycle)
+        | _ -> failwith ("Unknown value '" ^ conf ^ "' for option solvers.td3.side_widen!")
+      in
+
+      let (module WPS) = choose_wpoint_select (GobConfig.get_string "solvers.td3.side_widen") in
 
       let () = print_solver_stats := fun () ->
           print_data data;
@@ -290,18 +417,23 @@ module Base =
           )
         | None -> ((* Not a widening point *)) in
       let should_widen x = (HM.find_option wpoint_gas x) = (Some 0) in
+      let wps_data = WPS.create_data (fun x -> HM.mem stable x) add_infl in
 
       (* Same as destabilize, but returns true if it destabilized a called var, or a var in vs which was stable. *)
-      let rec destabilize_vs x = (* TODO remove? Only used for side_widen cycle. *)
+      let rec destabilize_record x notify_destabilized = (* TODO remove? Only used for side_widen cycle. *)
         if tracing then trace "sol2" "destabilize_vs %a" S.Var.pretty_trace x;
         let w = HM.find_default infl x VS.empty in
         HM.replace infl x VS.empty;
-        VS.fold (fun y b ->
+        VS.iter (fun y ->
             let was_stable = HM.mem stable y in
+            let is_called = HM.mem called y in
             HM.remove stable y;
             HM.remove superstable y;
-            HM.mem called y || destabilize_vs y || b || was_stable && List.mem_cmp S.Var.compare y vs
-          ) w false
+            Hooks.stable_remove y;
+            notify_destabilized y is_called was_stable;
+            if not (HM.mem called y) then
+              destabilize_record y notify_destabilized;
+          ) w
       and solve ?reuse_eq x phase =
         if tracing then trace "sol2" "solve %a, phase: %s, called: %b, stable: %b, wpoint: %s" S.Var.pretty_trace x (show_phase phase) (HM.mem called x) (HM.mem stable x) (format_wpoint x);
         init x;
@@ -434,7 +566,9 @@ module Base =
         );
         assert (Hooks.system y = None);
         init y;
-        (match x with None -> () | Some x -> if side_widen = "unstable_self" then add_infl x y);
+
+        WPS.side wps_data y x;
+
         let widen a b =
           if M.tracing then M.traceli "sol2" "side widen %a %a" S.Dom.pretty a S.Dom.pretty b;
           let r = S.Dom.widen a (S.Dom.join a b) in
@@ -442,23 +576,8 @@ module Base =
           r
         in
         let old_sides = HM.find_default sides y VS.empty in
-        let widen_if_no_gas a b y =
-          (* If y still has widening gas, widening will not be performed. *)
-          if not (should_widen y) then S.Dom.join a b else widen a b
-        in
-        (* Combination operator for merging the old value of y with the incoming side-effect.
-           If sides-local is configured, widen only if the unknown causing the side-effect has
-           caused one in the past. This only affects y if the new side-effect is larger than
-           the one previously caused by x.
-           In all other sides widening modes, if y is a widening point, widen, otherwise join. *)
-        let op a b = match side_widen with
-          | "sides-local" when not (S.Dom.leq b a) -> (
-              match x with
-              | None -> widen_if_no_gas a b y
-              | Some x when VS.mem x old_sides -> widen_if_no_gas a b y
-              | _ -> S.Dom.join a b
-            )
-          | _ -> widen_if_no_gas a b y
+        let op a b = (* If y still has widening gas, widening will not be performed. *)
+          if not (should_widen y) || WPS.veto_widen wps_data called old_sides y x then S.Dom.join a b else widen a b
         in
         let old = HM.find rho y in
         let tmp = op old d in
@@ -468,52 +587,20 @@ module Base =
           if tracing && not (S.Dom.is_bot old) then trace "solside" "side to %a (wpx: %s) from %a: %a -> %a" S.Var.pretty_trace y (format_wpoint y) (Pretty.docOpt (S.Var.pretty_trace ())) x S.Dom.pretty old S.Dom.pretty tmp;
           if tracing && not (S.Dom.is_bot old) then trace "solchange" "side to %a (wpx: %s) from %a: %a" S.Var.pretty_trace y (format_wpoint y) (Pretty.docOpt (S.Var.pretty_trace ())) x S.Dom.pretty_diff (tmp, old);
 
-          let sided = match x with
+          (match x with
             | Some x ->
-              let sided = VS.mem x old_sides in
-              if not sided then add_sides y x;
-              sided
-            | None -> false
-          in
+              if not (VS.mem x old_sides) then add_sides y x;
+            | None -> ());
+
           (* HM.replace rho y ((if HM.mem wpoint y then S.Dom.widen old else identity) (S.Dom.join old d)); *)
           HM.replace rho y tmp;
-          if side_widen <> "cycle" then destabilize y;
+          destabilize_record y (WPS.notify_destabilized wps_data vs);
+
           (* make y a widening point if ... This will only matter for the next side _ y.  *)
-          let wpoint_if e =
-            if e then (
-              let () = if tracing then trace "sol2" "side adding wpoint %a from %a" S.Var.pretty_trace y (Pretty.docOpt (S.Var.pretty_trace ())) x in
-              mark_wpoint y default_side_widen_gas
-            )
-          in
-          (match side_widen with
-          | "always" -> (* Any side-effect after the first one will be widened which will unnecessarily lose precision. *)
-            wpoint_if true
-          | "never" -> (* On side-effect cycles, this should terminate via the outer `solver` loop. TODO check. *)
-            ()
-          | "sides-local" -> (* Always mark wpoint: sides-local will veto widening, if there have been no previous side-effects from this unknown *)
-            wpoint_if true
-          | "sides" ->
-            (* if there already was a `side x y d` that changed rho[y] and now again, we make y a wpoint *)
-            (* x caused more than one update to y. >=3 partial context calls will be precise since sides come from different x. TODO this has 8 instead of 5 phases of `solver` for side_cycle.c *)
-            wpoint_if sided
-          | "sides-pp" ->
-            begin match x with
-              | Some x ->
-                let n = S.Var.node x in
-                let sided = VS.exists (fun v -> Node.equal (S.Var.node v) n) old_sides in
-                wpoint_if sided
-              | None -> ()
-            end
-          | "cycle" -> (* destabilized a called or start var. Problem: two partial context calls will be precise, but third call will widen the state. *)
-            (* if this side destabilized some of the initial unknowns vs, there may be a side-cycle between vs and we should make y a wpoint *)
-            let destabilized_vs = destabilize_vs y in
-            wpoint_if destabilized_vs
-          (* TODO: The following two don't check if a vs got destabilized which may be a problem. *)
-          | "unstable_self" -> (* TODO test/remove. Side to y destabilized itself via some infl-cycle. The above add_infl is only required for this option. Check for which examples this is problematic! *)
-            wpoint_if @@ not (HM.mem stable y)
-          | "unstable_called" -> (* TODO test/remove. Widen if any called var (not just y) is no longer stable. Expensive! *)
-            wpoint_if @@ exists_key (neg (HM.mem stable)) called (* this is very expensive since it folds over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
-          | x -> failwith ("Unknown value '" ^ x ^ "' for option solvers.td3.side_widen!"));
+          if (WPS.should_mark_wpoint wps_data called old_sides y x) then (
+            let () = if tracing then trace "sol2" "side adding wpoint %a from %a" S.Var.pretty_trace y (Pretty.docOpt (S.Var.pretty_trace ())) x in
+            mark_wpoint y default_side_widen_gas
+          );
 
           (* y has grown. Reduce widening gas! *)
           reduce_gas y;
