@@ -73,9 +73,9 @@ module Base =
 
       val create_data: (S.v -> bool) -> (S.v -> S.v -> unit) -> data
       val side: data -> S.v -> S.v option -> unit
-      val notify_destabilized: data -> S.v list -> S.v -> bool -> bool -> unit
+      val record_destabilized_vs: bool
       val veto_widen: data -> unit HM.t -> VS.t -> S.v -> S.v option -> bool
-      val should_mark_wpoint: data -> unit HM.t -> VS.t -> S.v -> S.v option -> bool
+      val should_mark_wpoint: data -> unit HM.t -> VS.t -> S.v -> S.v option -> bool option -> bool
     end
     module WpsAlways : WPointSelect =
     struct
@@ -83,9 +83,9 @@ module Base =
 
       let create_data _ _ = ()
       let side _ _ _ = ()
-      let notify_destabilized _ _ _ _ _ = ()
+      let record_destabilized_vs = false
       let veto_widen _ _ _ _ _ = false
-      let should_mark_wpoint _ _ _ _ _ = true
+      let should_mark_wpoint _ _ _ _ _ _ = true
     end
     module WpsNever : WPointSelect =
     struct
@@ -93,9 +93,9 @@ module Base =
 
       let create_data _ _ = ()
       let side _ _ _ = ()
-      let notify_destabilized _ _ _ _ _ = ()
+      let record_destabilized_vs = false
       let veto_widen _ _ _ _ _ = false
-      let should_mark_wpoint _ _ _ _ _ = false
+      let should_mark_wpoint _ _ _ _ _ _ = false
     end
     module WpsSidesLocal : WPointSelect =
     struct
@@ -103,22 +103,22 @@ module Base =
 
       let create_data _ _ = ()
       let side _ _ _ = ()
-      let notify_destabilized _ _ _ _ _ = ()
+      let record_destabilized_vs = false
       let veto_widen state called old_sides y x =
         match x with
         | None -> false
         | Some x when VS.mem x old_sides -> false
         | _ -> true
-      let should_mark_wpoint state called old_sides y x = true
+      let should_mark_wpoint _ _ _ _ _ _ = true
     end
     module WpsSidesPP : WPointSelect =
     struct
       type data = unit
       let create_data _ _ = ()
       let side _ _ _ = ()
-      let notify_destabilized _ _ _ _ _ = ()
+      let record_destabilized_vs = false
       let veto_widen state called old_sides y x = false
-      let should_mark_wpoint state called old_sides y x = match x with
+      let should_mark_wpoint state called old_sides y x _ = match x with
         | Some x ->
           let n = S.Var.node x in
           VS.exists (fun v -> Node.equal (S.Var.node v) n) old_sides
@@ -132,9 +132,9 @@ module Base =
 
       let create_data _ _ = ()
       let side _ _ _ = ()
-      let notify_destabilized _ _ _ _ _ = ()
+      let record_destabilized_vs = false
       let veto_widen state called old_sides y x = false
-      let should_mark_wpoint state called old_sides y x = match x with | Some(x) -> VS.mem x old_sides | None -> true
+      let should_mark_wpoint state called old_sides y x _ = match x with | Some(x) -> VS.mem x old_sides | None -> true
     end
     (* TODO: The following two don't check if a vs got destabilized which may be a problem. *)
     module WpsUnstableSelf : WPointSelect =
@@ -143,10 +143,10 @@ module Base =
 
       let create_data is_stable add_infl = { is_stable; add_infl }
       let side data y x = (match x with None -> () | Some x -> data.add_infl x y)
-      let notify_destabilized _ _ _ _ _ = ()
-      let veto_widen state called old_sides y x = false
+      let record_destabilized_vs = false
+      let veto_widen _ _ _ _ _ = false
       (* TODO test/remove. Side to y destabilized itself via some infl-cycle. The above add_infl is only required for this option. Check for which examples this is problematic! *)
-      let should_mark_wpoint state called old_sides y x = not (state.is_stable y) (* this is very expensive since it folds over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
+      let should_mark_wpoint state called old_sides y x _ = not (state.is_stable y) (* this is very expensive since it folds over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
     end
     module WpsUnstableCalled : WPointSelect =
     struct
@@ -154,32 +154,29 @@ module Base =
 
       let create_data is_stable _ = { is_stable }
       let side _ _ _ = ()
-      let notify_destabilized _ _ _ _ _ = ()
+      let record_destabilized_vs = false
       let veto_widen state called old_sides y x = false
       (* TODO test/remove. Widen if any called var (not just y) is no longer stable. Expensive! *)
-      let should_mark_wpoint state called old_sides y x = exists_key (neg (state.is_stable)) called
+      let should_mark_wpoint state called old_sides y x _ = exists_key (neg (state.is_stable)) called
     end
     module WpsCycle : WPointSelect =
     struct
-      type data = { cycle: bool ref }
+      type data = unit
 
-      let create_data is_stable _ = { cycle = ref false; }
-      let side state y x = state.cycle := false
-      let notify_destabilized state vs x is_called was_stable =
-        if is_called then (
-          if tracing then trace "side_widen" "cycle: destabilized called var %a" S.Var.pretty_trace x;
-          state.cycle := true;
-        )
-        else if (was_stable && List.mem_cmp S.Var.compare x vs) then (
-          if tracing then trace "side_widen" "cycle: destabilized stable start var %a" S.Var.pretty_trace x;
-          state.cycle := true
-        )
+      let create_data _ _ = ()
+      let side _ _ _ = ()
+      let record_destabilized_vs = true
       let veto_widen state called old_sides y x = false
       (* destabilized a called or start var. Problem: two partial context calls will be precise, but third call will widen the state. *)
       (* if this side destabilized some of the initial unknowns vs, there may be a side-cycle between vs and we should make y a wpoint *)
-      let should_mark_wpoint state called old_sides y x =
-        if tracing && !(state.cycle) then trace "side_widen" "cycle: should mark wpoint %a" S.Var.pretty_trace y;
-        !(state.cycle)
+      let should_mark_wpoint state called old_sides y x cycle =
+        match cycle with
+        | Some cycle ->
+          if tracing && cycle then trace "side_widen" "cycle: should mark wpoint %a" S.Var.pretty_trace y;
+          cycle
+        | None ->
+          Logs.warn "destabilize_vs information not provided to side_widen cycle strategy";
+          true
     end
     let create_empty_data () = {
       st = [];
@@ -420,20 +417,16 @@ module Base =
       let wps_data = WPS.create_data (fun x -> HM.mem stable x) add_infl in
 
       (* Same as destabilize, but returns true if it destabilized a called var, or a var in vs which was stable. *)
-      let rec destabilize_record x notify_destabilized = (* TODO remove? Only used for side_widen cycle. *)
+      let rec destabilize_vs x = (* TODO remove? Only used for side_widen cycle. *)
         if tracing then trace "sol2" "destabilize_vs %a" S.Var.pretty_trace x;
         let w = HM.find_default infl x VS.empty in
         HM.replace infl x VS.empty;
-        VS.iter (fun y ->
+        VS.fold (fun y b ->
             let was_stable = HM.mem stable y in
-            let is_called = HM.mem called y in
             HM.remove stable y;
             HM.remove superstable y;
-            Hooks.stable_remove y;
-            notify_destabilized y is_called was_stable;
-            if not (HM.mem called y) then
-              destabilize_record y notify_destabilized;
-          ) w
+            HM.mem called y || destabilize_vs y || b || was_stable && List.mem_cmp S.Var.compare y vs
+          ) w false
       and solve ?reuse_eq x phase =
         if tracing then trace "sol2" "solve %a, phase: %s, called: %b, stable: %b, wpoint: %s" S.Var.pretty_trace x (show_phase phase) (HM.mem called x) (HM.mem stable x) (format_wpoint x);
         init x;
@@ -594,10 +587,14 @@ module Base =
 
           (* HM.replace rho y ((if HM.mem wpoint y then S.Dom.widen old else identity) (S.Dom.join old d)); *)
           HM.replace rho y tmp;
-          destabilize_record y (WPS.notify_destabilized wps_data vs);
+          let destabilized_vs: bool option = if WPS.record_destabilized_vs then (
+              destabilize y;
+              None
+            ) else
+              Some (destabilize_vs y) in
 
           (* make y a widening point if ... This will only matter for the next side _ y.  *)
-          if (WPS.should_mark_wpoint wps_data called old_sides y x) then (
+          if (WPS.should_mark_wpoint wps_data called old_sides y x destabilized_vs) then (
             let () = if tracing then trace "sol2" "side adding wpoint %a from %a" S.Var.pretty_trace y (Pretty.docOpt (S.Var.pretty_trace ())) x in
             mark_wpoint y default_side_widen_gas
           );
