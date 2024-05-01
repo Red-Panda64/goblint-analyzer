@@ -72,7 +72,7 @@ module Base =
       type data
 
       val create_data: (S.v -> bool) -> (S.v -> S.v -> unit) -> data
-      val side: data -> S.v -> S.v option -> unit
+      val notify_side: data -> S.v -> S.v option -> unit
       val record_destabilized_vs: bool
       val veto_widen: data -> unit HM.t -> VS.t -> S.v -> S.v option -> bool
       val should_mark_wpoint: data -> unit HM.t -> VS.t -> S.v -> S.v option -> bool option -> bool
@@ -82,7 +82,7 @@ module Base =
       type data = unit
 
       let create_data _ _ = ()
-      let side _ _ _ = ()
+      let notify_side _ _ _ = ()
       let record_destabilized_vs = false
       let veto_widen _ _ _ _ _ = false
       let should_mark_wpoint _ _ _ _ _ _ = true
@@ -92,7 +92,7 @@ module Base =
       type data = unit
 
       let create_data _ _ = ()
-      let side _ _ _ = ()
+      let notify_side _ _ _ = ()
       let record_destabilized_vs = false
       let veto_widen _ _ _ _ _ = false
       let should_mark_wpoint _ _ _ _ _ _ = false
@@ -102,7 +102,7 @@ module Base =
       type data = unit
 
       let create_data _ _ = ()
-      let side _ _ _ = ()
+      let notify_side _ _ _ = ()
       let record_destabilized_vs = false
       let veto_widen state called old_sides y x =
         match x with
@@ -115,7 +115,7 @@ module Base =
     struct
       type data = unit
       let create_data _ _ = ()
-      let side _ _ _ = ()
+      let notify_side _ _ _ = ()
       let record_destabilized_vs = false
       let veto_widen state called old_sides y x = false
       let should_mark_wpoint state called old_sides y x _ = match x with
@@ -131,7 +131,7 @@ module Base =
       type data = unit
 
       let create_data _ _ = ()
-      let side _ _ _ = ()
+      let notify_side _ _ _ = ()
       let record_destabilized_vs = false
       let veto_widen state called old_sides y x = false
       let should_mark_wpoint state called old_sides y x _ = match x with | Some(x) -> VS.mem x old_sides | None -> true
@@ -142,7 +142,7 @@ module Base =
       type data = { is_stable: S.v -> bool; add_infl: S.v -> S.v -> unit }
 
       let create_data is_stable add_infl = { is_stable; add_infl }
-      let side data y x = (match x with None -> () | Some x -> data.add_infl x y)
+      let notify_side data y x = (match x with None -> () | Some x -> data.add_infl x y)
       let record_destabilized_vs = false
       let veto_widen _ _ _ _ _ = false
       (* TODO test/remove. Side to y destabilized itself via some infl-cycle. The above add_infl is only required for this option. Check for which examples this is problematic! *)
@@ -153,7 +153,7 @@ module Base =
       type data = { is_stable: S.v -> bool }
 
       let create_data is_stable _ = { is_stable }
-      let side _ _ _ = ()
+      let notify_side _ _ _ = ()
       let record_destabilized_vs = false
       let veto_widen state called old_sides y x = false
       (* TODO test/remove. Widen if any called var (not just y) is no longer stable. Expensive! *)
@@ -164,7 +164,7 @@ module Base =
       type data = unit
 
       let create_data _ _ = ()
-      let side _ _ _ = ()
+      let notify_side _ _ _ = ()
       let record_destabilized_vs = true
       let veto_widen state called old_sides y x = false
       (* destabilized a called or start var. Problem: two partial context calls will be precise, but third call will widen the state. *)
@@ -409,7 +409,7 @@ module Base =
         | Some old_gas ->
           let decremented_gas = old_gas - 1 in
           if decremented_gas >= 0 then (
-            if tracing then trace "gas" "reducing gas of %a: %d -> %d" S.Var.pretty_trace x old_gas decremented_gas;
+            if tracing then trace "widengas" "reducing gas of %a: %d -> %d" S.Var.pretty_trace x old_gas decremented_gas;
             HM.replace wpoint_gas x decremented_gas
           )
         | None -> ((* Not a widening point *)) in
@@ -560,7 +560,7 @@ module Base =
         assert (Hooks.system y = None);
         init y;
 
-        WPS.side wps_data y x;
+        WPS.notify_side wps_data y x;
 
         let widen a b =
           if M.tracing then M.traceli "sol2" "side widen %a %a" S.Dom.pretty a S.Dom.pretty b;
@@ -569,8 +569,9 @@ module Base =
           r
         in
         let old_sides = HM.find_default sides y VS.empty in
+        let vetoed_widen = WPS.veto_widen wps_data called old_sides y x in
         let op a b = (* If y still has widening gas, widening will not be performed. *)
-          if not (should_widen y) || WPS.veto_widen wps_data called old_sides y x then S.Dom.join a b else widen a b
+          if vetoed_widen || not (should_widen y) then S.Dom.join a b else widen a b
         in
         let old = HM.find rho y in
         let tmp = op old d in
@@ -600,7 +601,7 @@ module Base =
           );
 
           (* y has grown. Reduce widening gas! *)
-          reduce_gas y;
+          if not vetoed_widen then reduce_gas y;
         )
       and init x =
         if tracing then trace "sol2" "init %a" S.Var.pretty_trace x;
