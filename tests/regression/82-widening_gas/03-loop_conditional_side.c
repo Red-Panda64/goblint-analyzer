@@ -11,8 +11,8 @@ int main () {
         g = 42;
     }
 
-    // Exit loop with '==' condition to prevent narrowing from
-    // regaining any meaningful information for the loop body.
+    // Exit with '==' condition to prevent narrowing from
+    // regaining any meaningful information through the loop body.
     if (i == 10)
         goto end;
     i++;

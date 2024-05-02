@@ -5,7 +5,6 @@
 int a = 0;
 int b = 0;
 int c = 0;
-int d = 0;
 
 pthread_mutex_t A = PTHREAD_MUTEX_INITIALIZER;
 
@@ -17,10 +16,6 @@ void *thread(void *arg) {
   c = 1;
   c = 2;
   c = 3;
-  d = 1;
-  d = 2;
-  d = 3;
-  d = 4;
   pthread_mutex_unlock(&A);
   return NULL;
 }
@@ -34,9 +29,6 @@ int main(void) {
   __goblint_check(a <= 1);
   __goblint_check(b <= 2);
   __goblint_check(c <= 3);
-  // Don't check for precision loss, might be remedied by future
-  // versions of the solver.
-  //__goblint_check(d <= 4); // UNKNOWN
   pthread_mutex_unlock(&A);
   return 0;
 }
