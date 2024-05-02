@@ -1,4 +1,4 @@
-// PARAM: --set solvers.td3.widen_gas 5 --enable ana.int.interval --enable exp.no-narrow
+// PARAM: --set solvers.td3.widen_gas 5 --enable ana.int.interval
 #include <goblint.h>
 
 int main(void) {
