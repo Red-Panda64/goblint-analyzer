@@ -1259,45 +1259,39 @@ struct
     (* TODO: check if a hash table would perform better or worse
        (and check how many sides are typical, probably few to none) *)
     let rec record_side variable effect side_acc = match side_acc with
-      | (variable2, acc) :: xs when variable = variable2 -> (variable, G.join acc effect) :: xs
+      | (variable2, acc) :: xs when V.equal variable variable2 -> (variable, G.join acc effect) :: xs
       | x :: xs -> x :: record_side variable effect xs
       | [] -> [(variable, effect)] in
 
     let side_acc = ref [] in
     let rec ctx' = { ctx with
-                     sideg = (fun (variable: V.t) (effect: G.t) ->
-                         if M.tracing then M.trace "side" "SIDE";
-                         side_acc := record_side variable effect !side_acc;
-                       )
+                     sideg = (fun (variable: V.t) (effect: G.t) -> side_acc := record_side variable effect !side_acc)
                    }
     in ctx', side_acc
 
   let delay_side f v ctx =
     let ctx', side_acc = conv ctx in
     let result = f ctx' in
-    if !side_acc != [] then (
-      if M.tracing then M.trace "side" "NON-EMPTY SIDE LIST!";
-      List.iter (fun (var, effect) -> ctx.sideg var effect) !side_acc
-    );
+    List.iter (fun (var, effect) -> ctx.sideg var effect) !side_acc;
     result
 
-  let enter ctx           = delay_side S.enter None ctx
-  let threadenter ctx     = delay_side S.threadenter None ctx
-  let sync ctx            = delay_side S.sync None ctx
-  let query ctx           = delay_side S.query None ctx
-  let assign ctx          = delay_side S.assign None ctx
-  let vdecl ctx           = delay_side S.vdecl None ctx
-  let body ctx            = delay_side S.body None ctx
-  let branch ctx          = delay_side S.branch None ctx
-  let return ctx          = delay_side S.return None ctx
-  let asm ctx             = delay_side S.asm None ctx
-  let skip ctx            = delay_side S.skip None ctx
-  let special ctx         = delay_side S.special None ctx
-  let combine_env ctx     = delay_side S.combine_env None ctx
-  let combine_assign ctx  = delay_side S.combine_assign None ctx
-  let paths_as_set ctx    = delay_side S.paths_as_set None ctx 
-  let threadspawn ctx     = delay_side S.threadspawn None ctx
-  let event ctx           = delay_side S.event None ctx
+  let enter ctx l f a                            = delay_side (fun ctx -> S.enter ctx l f a) None ctx
+  let sync ctx reason                            = delay_side (fun ctx -> S.sync ctx reason) None ctx
+  let query ctx queries                          = delay_side (fun ctx -> S.query ctx queries) None ctx
+  let assign ctx l r                             = delay_side (fun ctx -> S.assign ctx l r) None ctx
+  let vdecl ctx v                                = delay_side (fun ctx -> S.vdecl ctx v) None ctx
+  let body ctx f                                 = delay_side (fun ctx -> S.body ctx f) None ctx
+  let branch ctx cond pos                        = delay_side (fun ctx -> S.branch ctx cond pos) None ctx
+  let return ctx value f                         = delay_side (fun ctx -> S.return ctx value f) None ctx
+  let asm ctx                                    = delay_side S.asm None ctx
+  let skip ctx                                   = delay_side S.skip None ctx
+  let special ctx l v a                          = delay_side (fun ctx -> S.special ctx l v a) None ctx
+  let combine_env ctx l fe f a fc d f_ask        = delay_side (fun ctx -> S.combine_env ctx l fe f a fc d f_ask) None ctx
+  let combine_assign ctx l fe f a fc d f_ask     = delay_side (fun ctx -> S.combine_assign ctx l fe f a fc d f_ask) None ctx
+  let paths_as_set ctx                           = delay_side S.paths_as_set None ctx 
+  let threadenter ctx ~multiple l f args         = delay_side (fun ctx -> S.threadenter ctx ~multiple l f args) None ctx
+  let threadspawn ctx ~multiple lval f args fctx = delay_side (fun ctx -> S.threadspawn ctx ~multiple lval f args fctx) None ctx
+  let event ctx e octx                           = delay_side (fun ctx -> S.event ctx e octx) None ctx
 end
 
 module DeadBranchLifter (S: Spec): Spec =
