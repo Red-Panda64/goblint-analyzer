@@ -993,6 +993,20 @@
           },
           "additionalProperties": false
         },
+        "globals": {
+          "title": "ana.globals",
+          "type": "object",
+          "properties": {
+            "divide": {
+              "title": "ana.globals.divide",
+              "description":
+                "Distinguish side-effects to a global by source unknown and maintain a separate value for each. This permits narrowing on individual side-effects, should the contribution shrink. The value of the global is a join over all side-effects.",
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "additionalProperties": false
+        },
         "thread": {
           "title": "ana.thread",
           "type": "object",
