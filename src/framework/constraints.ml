@@ -1249,52 +1249,57 @@ struct
     if D.is_bot d then raise Deadcode else d
 end
 
-module DividedGlobalsLifter (S: Spec): Spec =
+module DividedGlobalsLifter (S: Spec): Spec=
 struct
   include S
 
+  module HM = Hashtbl.Make (S.V)
+
   let name () = "DividedGlobals (" ^ S.name () ^ ")"
 
-  let conv (ctx:(D.t,G.t,C.t,V.t) ctx): (S.D.t,G.t,S.C.t,V.t)ctx * (V.t * G.t) list ref =
-    (* TODO: check if a hash table would perform better or worse
-       (and check how many sides are typical, probably few to none) *)
-    let rec record_side variable effect side_acc = match side_acc with
-      | (variable2, acc) :: xs when V.equal variable variable2 -> (variable, G.join acc effect) :: xs
-      | x :: xs -> x :: record_side variable effect xs
-      | [] -> [(variable, effect)]
+  let conv (ctx:(D.t,G.t,C.t,V.t) ctx): (S.D.t,G.t,S.C.t,V.t)ctx * G.t HM.t =
+    let rec record_side variable effect side_acc =
+      HM.replace side_acc variable (match HM.find_option side_acc variable with
+          | Some acc -> G.join acc effect
+          | None -> effect);
     in
 
-    let side_acc = ref [] in
+    let side_acc = HM.create 8 in
     let rec ctx' = { ctx with
-                     sideg = (fun (variable: V.t) (effect: G.t) -> side_acc := record_side variable effect !side_acc)
+                     sideg = (fun (variable: V.t) (effect: G.t) -> record_side variable effect side_acc)
                    }
     in ctx', side_acc
 
   let delay_side f ctx =
-    let ctx', side_acc = conv ctx in
-    let result = f ctx' in
-    List.iter (fun (var, effect) -> ctx.sideg var effect) !side_acc;
-    result
+    if true then (
+      let ctx', side_acc = conv ctx in
+      let result = f ctx' in
+      HM.iter (fun var effect -> M.trace "side" "side to %a: %a" V.pretty var G.pretty effect; ctx.sideg var effect) side_acc;
+      result
+    ) else (
+      let ctx' = { ctx with
+                   sideg = (fun (var: V.t) (effect: G.t) -> M.trace "side" "side to %a: %a" V.pretty var G.pretty effect; ctx.sideg var effect)
+                 } in
+      f ctx'
+    )
 
-  let enter ctx l f a                            = delay_side (fun ctx -> S.enter ctx l f a) ctx
-  (*let sync ctx reason                            = delay_side (fun ctx -> S.sync ctx reason) ctx*)
-  let sync = S.sync
-  let query ctx queries                          = delay_side (fun ctx -> S.query ctx queries) ctx
-  let assign ctx l r                             = delay_side (fun ctx -> S.assign ctx l r) ctx
-  let vdecl ctx v                                = delay_side (fun ctx -> S.vdecl ctx v) ctx
-  let body ctx f                                 = delay_side (fun ctx -> S.body ctx f) ctx
-  let branch ctx cond pos                        = delay_side (fun ctx -> S.branch ctx cond pos) ctx
-  let return ctx value f                         = delay_side (fun ctx -> S.return ctx value f) ctx
-  let asm ctx                                    = delay_side S.asm ctx
-  let skip ctx                                   = delay_side S.skip ctx
-  (*let special ctx l v a                          = delay_side (fun ctx -> S.special ctx l v a) ctx*)
-  let special = S.special
-  let combine_env ctx l fe f a fc d f_ask        = delay_side (fun ctx -> S.combine_env ctx l fe f a fc d f_ask) ctx
-  let combine_assign ctx l fe f a fc d f_ask     = delay_side (fun ctx -> S.combine_assign ctx l fe f a fc d f_ask) ctx
-  let paths_as_set ctx                           = delay_side S.paths_as_set ctx 
-  let threadenter ctx ~multiple l f args         = delay_side (fun ctx -> S.threadenter ctx ~multiple l f args) ctx
-  let threadspawn ctx ~multiple lval f args fctx = delay_side (fun fctx -> delay_side (fun ctx -> S.threadspawn ctx ~multiple lval f args fctx) ctx) fctx
-  let event ctx e octx                           = delay_side (fun octx -> delay_side (fun ctx -> S.event ctx e octx) ctx) octx
+  let enter ctx l f a                            = M.trace "side" "--- start enter ---"; let result = delay_side (fun ctx -> S.enter ctx l f a) ctx in M.trace "side" "--- end enter ---"; result
+  let sync ctx reason                            = M.trace "side" "--- start sync ---"; let result = delay_side (fun ctx -> S.sync ctx reason) ctx in M.trace "side" "--- end sync ---"; result
+  let query ctx queries                          = M.trace "side" "--- start query ---"; let result = delay_side (fun ctx -> S.query ctx queries) ctx in M.trace "side" "--- end query ---"; result
+  let assign ctx l r                             = M.trace "side" "--- start assign ---"; let result = delay_side (fun ctx -> S.assign ctx l r) ctx in M.trace "side" "--- end assign ---"; result
+  let vdecl ctx v                                = M.trace "side" "--- start vdecl ---"; let result = delay_side (fun ctx -> S.vdecl ctx v) ctx in M.trace "side" "--- end vdecl ---"; result
+  let body ctx f                                 = M.trace "side" "--- start body ---"; let result = delay_side (fun ctx -> S.body ctx f) ctx in M.trace "side" "--- end body ---"; result
+  let branch ctx cond pos                        = M.trace "side" "--- start branch ---"; let result = delay_side (fun ctx -> S.branch ctx cond pos) ctx in M.trace "side" "--- end branch ---"; result
+  let return ctx value f                         = M.trace "side" "--- start return ---"; let result = delay_side (fun ctx -> S.return ctx value f) ctx in M.trace "side" "--- end return ---"; result
+  let asm ctx                                    = M.trace "side" "--- start asm ---"; let result = delay_side S.asm ctx in M.trace "side" "--- end asm ---"; result
+  let skip ctx                                   = M.trace "side" "--- start skip ---"; let result = delay_side S.skip ctx in M.trace "side" "--- end skip ---"; result
+  let special ctx l v a                          = M.trace "side" "--- start special ---"; let result = delay_side (fun ctx -> S.special ctx l v a) ctx in M.trace "side" "--- end special ---"; result
+  let combine_env ctx l fe f a fc d f_ask        = M.trace "side" "--- start combine_env ---"; let result = delay_side (fun ctx -> S.combine_env ctx l fe f a fc d f_ask) ctx in M.trace "side" "--- end combine_env ---"; result
+  let combine_assign ctx l fe f a fc d f_ask     = M.trace "side" "--- start combine_assign ---"; let result = delay_side (fun ctx -> S.combine_assign ctx l fe f a fc d f_ask) ctx in M.trace "side" "--- end combine_assign ---"; result
+  let paths_as_set ctx                           = M.trace "side" "--- start paths_as_set ---"; let result = delay_side S.paths_as_set ctx  in M.trace "side" "--- end paths_as_set ---"; result
+  let threadenter ctx ~multiple l f args         = M.trace "side" "--- start threadenter ---"; let result = delay_side (fun ctx -> S.threadenter ctx ~multiple l f args) ctx in M.trace "side" "--- end threadenter ---"; result
+  let threadspawn ctx ~multiple lval f args fctx = M.trace "side" "--- start threadspawn ---"; let result = delay_side (fun fctx -> delay_side (fun ctx -> S.threadspawn ctx ~multiple lval f args fctx) ctx) fctx in M.trace "side" "--- end threadspawn ---"; result
+  let event ctx e octx                           = M.trace "side" "--- start event ---"; let result = delay_side (fun octx -> delay_side (fun ctx -> S.event ctx e octx) ctx) octx in M.trace "side" "--- end event ---"; result
 end
 
 module DeadBranchLifter (S: Spec): Spec =
