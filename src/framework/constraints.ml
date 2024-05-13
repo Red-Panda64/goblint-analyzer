@@ -1271,11 +1271,19 @@ struct
     in ctx', side_acc
 
   let delay_side f ctx =
-    if true then (
+    if false then (
       let ctx', side_acc = conv ctx in
-      let result = f ctx' in
-      HM.iter (fun var effect -> M.trace "side" "side to %a: %a" V.pretty var G.pretty effect; ctx.sideg var effect) side_acc;
-      result
+      let apply_sides () = HM.iter (fun var effect -> M.trace "side" "side to %a: %a" V.pretty var G.pretty effect; ctx.sideg var effect) side_acc in
+      try
+        let result = f ctx' in
+        apply_sides ();
+        result
+      with e ->
+        (* TODO: why do side-effects need to be applied, if the transfer function is dead code?
+           Also, what should happen if apply_sides also throws? *)
+        M.trace "side" "--- end EXCEPTION ---";
+        apply_sides ();
+        raise e
     ) else (
       let ctx' = { ctx with
                    sideg = (fun (var: V.t) (effect: G.t) -> M.trace "side" "side to %a: %a" V.pretty var G.pretty effect; ctx.sideg var effect)
