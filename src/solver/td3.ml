@@ -496,8 +496,8 @@ module Base =
           HM.remove called x;
           let old = HM.find rho x in (* d from older solve *) (* find old value after eq since wpoint restarting in eq/eval might have changed it meanwhile *)
 
-          (* if value has grown, reduce gas (only applies to marked widening points) *)
-          if not (term && phase == Narrow) && not (S.Dom.leq eqd old) then reduce_gas x;
+          (* if value has changed, reduce gas (only applies to marked widening points) *)
+          if not (term && phase == Narrow) && not (S.Dom.equal eqd old) then reduce_gas x;
 
           let wpd = (* d after widen/narrow (if wp) *)
             if not wp then eqd
