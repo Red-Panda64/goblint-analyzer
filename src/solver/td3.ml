@@ -487,7 +487,7 @@ module Base =
               Some (destabilize_vs y) in
 
           (* make y a widening point if ... This will only matter for the next side _ y.  *)
-          if (WPS.should_mark_wpoint wps_data called old_sides x y destabilized_vs) then (
+          if WPS.should_mark_wpoint wps_data called old_sides x y destabilized_vs then (
             let () = if tracing then trace "sol2" "side adding wpoint %a from %a" S.Var.pretty_trace y (Pretty.docOpt (S.Var.pretty_trace ())) x in
             mark_wpoint y default_side_widen_gas
           );
@@ -939,7 +939,7 @@ module Base =
           let reachable' = HM.create (HM.length rho) in
           let reachable_and_superstable = HM.create (HM.length rho) in
           let rec one_var' x =
-            if (not (HM.mem reachable' x)) then (
+            if not (HM.mem reachable' x) then (
               if HM.mem superstable x then HM.replace reachable_and_superstable x ();
               HM.replace reachable' x ();
               Option.may (VS.iter one_var') (HM.find_option dep x);
