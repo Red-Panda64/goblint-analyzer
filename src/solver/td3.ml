@@ -305,7 +305,7 @@ module Base =
             HM.replace wpoint_gas x decremented_gas
           )
         | None -> ((* Not a widening point *)) in
-      let should_widen x = (HM.find_option wpoint_gas x) = (Some 0) in
+      let should_widen x = HM.find_option wpoint_gas x = Some 0 in
       let wps_data = WPS.create_data (fun x -> HM.mem stable x) add_infl in
 
       (* Same as destabilize, but returns true if it destabilized a called var, or a var in vs which was stable. *)
@@ -488,7 +488,7 @@ module Base =
 
           (* make y a widening point if ... This will only matter for the next side _ y.  *)
           if WPS.should_mark_wpoint wps_data called old_sides x y destabilized_vs then (
-            let () = if tracing then trace "sol2" "side adding wpoint %a from %a" S.Var.pretty_trace y (Pretty.docOpt (S.Var.pretty_trace ())) x in
+            if tracing then trace "sol2" "side adding wpoint %a from %a" S.Var.pretty_trace y (Pretty.docOpt (S.Var.pretty_trace ())) x;
             mark_wpoint y default_side_widen_gas
           );
 
