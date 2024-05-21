@@ -1,3 +1,5 @@
+(** Strategies for widening leaf unknowns *)
+
 open Batteries
 open ConstrSys
 open Messages
@@ -14,7 +16,7 @@ module type S =
         @param is_stable This callback should return whether an unknown is stable.
         @param add_infl  Allows the strategy to record additional influences.
                           This is mainly intended for strategies like unstable-self,
-                          which, for (side ~x y) records the influence of the unknown x to the leaf y.
+                          which records the influence of a side-effecting unknown x to the leaf y.
     *)
     val create_data: (S.v -> bool) -> (S.v -> S.v -> unit) -> data
     (** Notifies this strategy that a side-effect has occured.
@@ -25,7 +27,8 @@ module type S =
     *)
     val notify_side: data -> S.v option -> S.v -> unit
     (** Whether the destabilization of the side-effected var should record the destabilization
-        of called variables and start variables. This information should be passed to [should_mark_wpoint].
+        of called variables and start variables. This information should be passed to [should_mark_wpoint]
+        by the solver.
     *)
     val record_destabilized_vs: bool
     (** This strategy can decide to prevent widening.
@@ -41,6 +44,7 @@ module type S =
     *)
     val veto_widen: data -> unit HM.t -> VS.t -> S.v option -> S.v -> bool
     (** The value of the leaf has grown. Should it be marked a widening point?
+        Widening points are widened when their value grows, unless vetoed.
         Even if this function is called, leaf y might already be a widening point
         from an earlier side-effect.
         @param data            The internal state of this strategy
