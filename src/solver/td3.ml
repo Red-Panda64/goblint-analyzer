@@ -253,15 +253,15 @@ module Base =
       let rho_write = data.rho_write in
       let dep = data.dep in
 
-      let choose_wpoint_select: string -> (module WPointSelect.S) = fun conf -> match conf with
-        | "always" -> (module WPointSelect.Always)
-        | "never" -> (module WPointSelect.Never)
-        | "sides-local" -> (module WPointSelect.SidesLocal)
-        | "sides" -> (module WPointSelect.Sides)
-        | "sides-pp" -> (module WPointSelect.SidesPP)
-        | "unstable-self" -> (module WPointSelect.UnstableSelf)
-        | "unstable-called" -> (module WPointSelect.UnstableCalled)
-        | "cycle" -> (module WPointSelect.Cycle)
+      let choose_wpoint_select: string -> (module SideWPointSelect.S) = fun conf -> match conf with
+        | "always" -> (module SideWPointSelect.Always)
+        | "never" -> (module SideWPointSelect.Never)
+        | "sides-local" -> (module SideWPointSelect.SidesLocal)
+        | "sides" -> (module SideWPointSelect.Sides)
+        | "sides-pp" -> (module SideWPointSelect.SidesPP)
+        | "unstable-self" -> (module SideWPointSelect.UnstableSelf)
+        | "unstable-called" -> (module SideWPointSelect.UnstableCalled)
+        | "cycle" -> (module SideWPointSelect.Cycle)
         | _ -> failwith ("Unknown value '" ^ conf ^ "' for option solvers.td3.side_widen!")
       in
 
