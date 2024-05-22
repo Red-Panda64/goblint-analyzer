@@ -374,7 +374,7 @@ module Base =
               if tracing then trace "sol2" "solve still unstable %a" S.Var.pretty_trace x;
               (solve[@tailcall]) x Widen
             ) else (
-              if term && phase = Widen && should_widen x then ( (* TODO: or use wp? *)
+              if term && phase = Widen && HM.mem wpoint_gas x then ( (* TODO: or use wp? *)
                 if tracing then trace "sol2" "solve switching to narrow %a" S.Var.pretty_trace x;
                 if tracing then trace "sol2" "stable remove %a" S.Var.pretty_trace x;
                 HM.remove stable x;
@@ -405,8 +405,7 @@ module Base =
           HM.replace called y ();
           let eqd = eq y (eval l x) (side ~x) in
           HM.remove called y;
-          (* TODO: is should_widen correct here? *)
-          if should_widen y then (HM.remove l y; solve y Widen; HM.find rho y)
+          if HM.mem wpoint_gas y then (HM.remove l y; solve y Widen; HM.find rho y)
           else (if cache then HM.replace l y eqd; eqd)
         )
       and eval l x y =
