@@ -62,6 +62,8 @@ module type S =
     *)
     val should_mark_wpoint: data -> unit HM.t -> VS.t -> S.v option -> S.v -> bool option -> bool
   end
+
+(** Any side-effect after the first one will be widened which will unnecessarily lose precision. *)
 module Always : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -75,6 +77,9 @@ module Always : S =
     let veto_widen _ _ _ _ _ = false
     let should_mark_wpoint _ _ _ _ _ _ = true
   end
+
+(* On side-effect cycles, this should terminate via the outer `solver` loop. TODO check. *)
+(** Never widen side-effects. *)
 module Never : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -88,6 +93,9 @@ module Never : S =
     let veto_widen _ _ _ _ _ = false
     let should_mark_wpoint _ _ _ _ _ _ = false
   end
+
+(** Widening check happens by checking sides.
+    Only widen if value increases and there has already been a side-effect from the same source *)
 module SidesLocal : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -105,6 +113,10 @@ module SidesLocal : S =
       | _ -> true
     let should_mark_wpoint _ _ _ _ _ _ = true
   end
+
+(** If there was already a `side x y d` from the same program point and now again, make y a widening point.
+    Different from `Sides` in that it will not distinguish between side-effects from different contexts,
+    only the program point matters. *)
 module SidesPP : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -123,6 +135,9 @@ module SidesPP : S =
       (* TODO: This is consistent with the previous implementation, but if multiple side-effects come in with x = None,
           the leaf will never be widened. This is different from SidesLocal *)
   end
+
+(** If there already was a `side x y d` that changed rho[y] and now again, we make y a wpoint.
+    x caused more than one update to y. >=3 partial context calls will be precise since sides come from different x. TODO this has 8 instead of 5 phases of `solver` for side_cycle.c *)
 module Sides : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -136,7 +151,11 @@ module Sides : S =
     let veto_widen state called old_sides x y = false
     let should_mark_wpoint state called old_sides x y _ = match x with | Some(x) -> VS.mem x old_sides | None -> true
   end
+
 (* TODO: The following two don't check if a vs got destabilized which may be a problem. *)
+
+(* TODO test/remove. Check for which examples this is problematic! *)
+(** Side to y destabilized itself via some infl-cycle. Records influences from unknowns to globals *)
 module UnstableSelf : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -148,9 +167,11 @@ module UnstableSelf : S =
     let notify_side data x y = (match x with None -> () | Some x -> data.add_infl x y)
     let record_destabilized_vs = false
     let veto_widen _ _ _ _ _ = false
-    (* TODO test/remove. Side to y destabilized itself via some infl-cycle. The above add_infl is only required for this option. Check for which examples this is problematic! *)
-    let should_mark_wpoint state called old_sides x y _ = not (state.is_stable y) (* this is very expensive since it folds over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
+    let should_mark_wpoint state called old_sides x y _ = not (state.is_stable y)
   end
+
+(* TODO test/remove. *)
+(** Widen if any called var (not just y) is no longer stable. Expensive! *)
 module UnstableCalled : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -162,9 +183,11 @@ module UnstableCalled : S =
     let notify_side _ _ _ = ()
     let record_destabilized_vs = false
     let veto_widen state called old_sides y x = false
-    (* TODO test/remove. Widen if any called var (not just y) is no longer stable. Expensive! *)
-    let should_mark_wpoint state called old_sides y x _ = HM.fold (fun k _ a -> a || not (state.is_stable k)) called false
+    let should_mark_wpoint state called old_sides y x _ = HM.fold (fun k _ a -> a || not (state.is_stable k)) called false (* this is very expensive since it folds over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
   end
+
+(** Destabilized a called or start var. Problem: two partial context calls will be precise, but third call will widen the state.
+    If this side destabilized some of the initial unknowns vs, there may be a side-cycle between vs and we should make y a wpoint *)    
 module Cycle : S =
   functor (S:EqConstrSys) ->
   functor (HM:Hashtbl.S with type key = S.v) ->
@@ -176,16 +199,13 @@ module Cycle : S =
     let notify_side _ _ _ = ()
     let record_destabilized_vs = true
     let veto_widen state called old_sides x y = false
-    (* destabilized a called or start var. Problem: two partial context calls will be precise, but third call will widen the state. *)
-    (* if this side destabilized some of the initial unknowns vs, there may be a side-cycle between vs and we should make y a wpoint *)
     let should_mark_wpoint state called old_sides x y cycle =
       match cycle with
       | Some cycle ->
         if tracing && cycle then trace "side_widen" "cycle: should mark wpoint %a" S.Var.pretty_trace y;
         cycle
       | None ->
-        Logs.warn "destabilize_vs information not provided to side_widen cycle strategy";
-        true
+        failwith "destabilize_vs information not provided to side_widen cycle strategy";
   end
 
 let choose_impl: unit -> (module S) = fun () ->
