@@ -19,6 +19,7 @@ module type S =
                           which records the influence of a side-effecting unknown x to the leaf y.
     *)
     val create_data: (S.v -> bool) -> (S.v -> S.v -> unit) -> data
+
     (** Notifies this strategy that a side-effect has occured.
         This allows the strategy to adapt its internal data structure.
         @param data The internal state of this strategy
@@ -26,11 +27,13 @@ module type S =
         @param y    The leaf receiving the side-effect
     *)
     val notify_side: data -> S.v option -> S.v -> unit
+
     (** Whether the destabilization of the side-effected var should record the destabilization
         of called variables and start variables. This information should be passed to [should_mark_wpoint]
         by the solver.
     *)
     val record_destabilized_vs: bool
+
     (** This strategy can decide to prevent widening.
         Note that, if this strategy does not veto, this does not mean that widening
         will necessarily be performed. Nor does a call to this function imply that
@@ -43,6 +46,7 @@ module type S =
         @return [true]: widening will not be applied; [false]: widening might be applied
     *)
     val veto_widen: data -> unit HM.t -> VS.t -> S.v option -> S.v -> bool
+
     (** The value of the leaf has grown. Should it be marked a widening point?
         Widening points are widened when their value grows, unless vetoed.
         Even if this function is called, leaf y might already be a widening point
@@ -183,3 +187,16 @@ module Cycle : S =
         Logs.warn "destabilize_vs information not provided to side_widen cycle strategy";
         true
   end
+
+let choose_impl: unit -> (module S) = fun () ->
+  let conf = GobConfig.get_string "solvers.td3.side_widen" in
+  match conf with
+  | "always" -> (module Always)
+  | "never" -> (module Never)
+  | "sides-local" -> (module SidesLocal)
+  | "sides" -> (module Sides)
+  | "sides-pp" -> (module SidesPP)
+  | "unstable-self" -> (module UnstableSelf)
+  | "unstable-called" -> (module UnstableCalled)
+  | "cycle" -> (module Cycle)
+  | _ -> failwith ("Unknown value '" ^ conf ^ "' for option solvers.td3.side_widen!")
