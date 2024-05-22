@@ -183,7 +183,7 @@ module UnstableCalled : S =
     let notify_side _ _ _ = ()
     let record_destabilized_vs = false
     let veto_widen state called old_sides y x = false
-    let should_mark_wpoint state called old_sides y x _ = HM.fold (fun k _ a -> a || not (state.is_stable k)) called false (* this is very expensive since it folds over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
+    let should_mark_wpoint state called old_sides y x _ = HM.exists (fun k _ -> not (state.is_stable k)) called (* this is very expensive since it iterates over called! see https://github.com/goblint/analyzer/issues/265#issuecomment-880748636 *)
   end
 
 (** Destabilized a called or start var. Problem: two partial context calls will be precise, but third call will widen the state.
