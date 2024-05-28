@@ -30,6 +30,8 @@ type t =
     * determined by alwaysGenerateVarDecl in cabs2cil.ml in CIL. One case in which a VDecl
     * is always there is for VLA. If there is a VDecl edge, it is where the declaration originally
     * appeared *)
+  | Enter of CilType.Fundec.t
+  | CombineEnv of CilType.Fundec.t
   | Skip
   (** This is here for historical reasons. I never use Skip edges! *)
 [@@deriving eq, ord, hash]
@@ -46,6 +48,8 @@ let pretty () = function
   | ASM (_,_,_) -> Pretty.text "ASM ..."
   | Skip -> Pretty.text "skip"
   | VDecl v -> Cil.defaultCilPrinter#pVDecl () v
+  | Enter _ -> Pretty.text "Enter"
+  | CombineEnv _ -> Pretty.text "Combine"
 
 let pretty_plain () = function
   | Assign (lv,rv) -> dprintf "Assign '%a = %a' " d_lval lv d_exp rv
@@ -58,6 +62,9 @@ let pretty_plain () = function
   | ASM _ -> text "ASM ..."
   | Skip -> text "Skip"
   | VDecl v -> dprintf "VDecl '%a %s;'" d_type v.vtype v.vname
+  | Enter _ -> text "Enter"
+  | CombineEnv _ -> text "Combine"
+
 
 let to_yojson e =
   let fields = match e with
@@ -107,6 +114,8 @@ let to_yojson e =
       [
         ("type", `String "nop");
       ]
+    | Enter _ -> failwith "unimplemented"
+    | CombineEnv _ -> failwith "unimplemented"
   in
   `Assoc ([
       ("string", `String (GobPretty.sprint pretty e))
