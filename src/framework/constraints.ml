@@ -618,6 +618,15 @@ struct
   module D = S.D
   module G = GVarG (S.G) (S.C)
 
+  (** TODO: Maybe make this a functor? *)
+  module Cfg = struct
+    include Cfg
+    let prev node = match node with
+      | Node.Enter (source, fd) -> [([(Node.location source, Edge.Enter fd)], source)]
+      | Node.CombineEnv (source, fd) -> [([(Node.location source, Edge.CombineEnv fd)], Node.Enter (source, fd))]
+      | _ -> prev node
+  end
+
   (* Two global invariants:
      1. S.V -> S.G  --  used for Spec
      2. fundec -> set of S.C  --  used for IterSysVars Node *)
