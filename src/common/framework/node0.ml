@@ -11,12 +11,16 @@ type t =
   (** *)
   | Function of CilType.Fundec.t
   (** The variable information associated with the function declaration. *)
+  | Enter of t * CilType.Fundec.t
+  | CombineEnv of t * CilType.Fundec.t
 [@@deriving eq, ord, hash, to_yojson]
 
-let location (node: t) =
+let rec location (node: t) =
   match node with
   | Statement stmt -> Cilfacade0.get_stmtLoc stmt
   | Function fd -> fd.svar.vdecl
   | FunctionEntry fd -> fd.svar.vdecl
+  | Enter (source, fd) -> location source
+  | CombineEnv (source, fd) -> location source
 
 let current_node: t option ref = ref None
