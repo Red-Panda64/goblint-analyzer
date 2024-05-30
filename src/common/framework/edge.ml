@@ -30,8 +30,8 @@ type t =
     * determined by alwaysGenerateVarDecl in cabs2cil.ml in CIL. One case in which a VDecl
     * is always there is for VLA. If there is a VDecl edge, it is where the declaration originally
     * appeared *)
-  | Enter of CilType.Fundec.t
-  | CombineEnv of CilType.Fundec.t
+  | Enter of CilType.Lval.t option * CilType.Fundec.t * CilType.Exp.t list
+  | CombineEnv of CilType.Lval.t option * CilType.Exp.t * CilType.Fundec.t * CilType.Exp.t list
   | Skip
   (** This is here for historical reasons. I never use Skip edges! *)
 [@@deriving eq, ord, hash]
