@@ -12,23 +12,29 @@ let name () = "node"
 
 (* TODO: remove this? *)
 (** Pretty node plainly with entire stmt. *)
-let pretty_plain () = function
+let rec pretty_plain () = function
   | Statement s -> text "Statement " ++ dn_stmt () s
   | Function f -> text "Function " ++ text f.svar.vname
   | FunctionEntry f -> text "FunctionEntry " ++ text f.svar.vname
+  | Enter (source, f) -> text "Enter " ++ text f.svar.vname ++ text " from " ++ pretty_plain () source
+  | CombineEnv (source, f) -> text "CombineEnv " ++ text f.svar.vname ++ text " with " ++ pretty_plain () source
 
 (* TODO: remove this? *)
 (** Pretty node plainly with stmt location. *)
-let pretty_plain_short () = function
+let rec pretty_plain_short () = function
   | Statement s -> text "Statement @ " ++ CilType.Location.pretty () (Cilfacade.get_stmtLoc s)
   | Function f -> text "Function " ++ text f.svar.vname
   | FunctionEntry f -> text "FunctionEntry " ++ text f.svar.vname
+  | Enter (source, f) -> text "Enter " ++ text f.svar.vname ++ text " from " ++ pretty_plain_short () source
+  | CombineEnv (source, f) -> text "CombineEnv " ++ text f.svar.vname ++ text " with " ++ pretty_plain_short () source
 
 (** Pretty node for solver variable tracing with short stmt. *)
-let pretty_trace () = function
-  | Statement stmt   -> dprintf "node %d \"%a\"" stmt.sid Cilfacade.stmt_pretty_short stmt
-  | Function      fd -> dprintf "call of %s (%d)" fd.svar.vname fd.svar.vid
-  | FunctionEntry fd -> dprintf "entry state of %s (%d)" fd.svar.vname fd.svar.vid
+let rec pretty_trace () = function
+  | Statement stmt          -> dprintf "node %d \"%a\"" stmt.sid Cilfacade.stmt_pretty_short stmt
+  | Function      fd        -> dprintf "call of %s (%d)" fd.svar.vname fd.svar.vid
+  | FunctionEntry fd        -> dprintf "entry state of %s (%d)" fd.svar.vname fd.svar.vid
+  | Enter (source, fd)      -> dprintf "enter %s (%d) from %a" fd.svar.vname fd.svar.vid pretty_trace source
+  | CombineEnv (source, fd) -> dprintf "combine %s (%d) with %a" fd.svar.vname fd.svar.vid pretty_trace source
 
 (** Output functions for Printable interface *)
 let pretty () x = pretty_trace () x
@@ -41,17 +47,21 @@ include Printable.SimplePretty (
 (* TODO: deriving to_yojson gets overridden by SimplePretty *)
 
 (** Show node ID for CFG and results output. *)
-let show_id = function
-  | Statement stmt   -> string_of_int stmt.sid
-  | Function fd      -> "ret" ^ string_of_int fd.svar.vid
-  | FunctionEntry fd -> "fun" ^ string_of_int fd.svar.vid
+let rec show_id = function
+  | Statement stmt          -> string_of_int stmt.sid
+  | Function fd             -> "ret" ^ string_of_int fd.svar.vid
+  | FunctionEntry fd        -> "fun" ^ string_of_int fd.svar.vid
+  | Enter (source, fd)      -> "enter" ^ string_of_int fd.svar.vid ^ "[" ^ show_id source ^ "]"
+  | CombineEnv (source, fd) -> "combine_env" ^ string_of_int fd.svar.vid ^ "[" ^ show_id source ^ "]"
+
 
 (** Show node label for CFG. *)
-let show_cfg = function
-  | Statement stmt   -> string_of_int stmt.sid (* doesn't use this but defaults to no label and uses ID from show_id instead *)
-  | Function fd      -> "return of " ^ fd.svar.vname ^ "()"
-  | FunctionEntry fd -> fd.svar.vname ^ "()"
-
+let rec show_cfg = function
+  | Statement stmt          -> string_of_int stmt.sid (* doesn't use this but defaults to no label and uses ID from show_id instead *)
+  | Function fd             -> "return of " ^ fd.svar.vname ^ "()"
+  | FunctionEntry fd        -> fd.svar.vname ^ "()"
+  | Enter (source, fd)      -> "enter " ^ fd.svar.vname ^ "() from " ^ show_cfg source
+  | CombineEnv (source, fd) -> "combine_env" ^ fd.svar.vname ^ "() with " ^ show_cfg source
 
 (** Find [fundec] which the node is in. In an incremental run this might yield old fundecs for pseudo-return nodes from the old file. *)
 let find_fundec (node: t) =
@@ -59,6 +69,8 @@ let find_fundec (node: t) =
   | Statement stmt -> Cilfacade.find_stmt_fundec stmt
   | Function fd
   | FunctionEntry fd -> fd
+  | Enter (_, fd) -> fd
+  | CombineEnv (_, fd) -> fd
 
 (** @raise Not_found *)
 let of_id s =
