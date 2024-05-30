@@ -622,8 +622,8 @@ struct
   module Cfg = struct
     include Cfg
     let prev node = match node with
-      | Node.Enter (source, fd) -> [([(Node.location source, Edge.Enter fd)], source)]
-      | Node.CombineEnv (source, fd) -> [([(Node.location source, Edge.CombineEnv fd)], Node.Enter (source, fd))]
+      | Node.Enter (source, r, fd, ars) -> [([(Node.location source, Edge.Enter (r, fd, ars))], source)]
+      | Node.CombineEnv (source, r, e, fd, ars) -> [([(Node.location source, Edge.CombineEnv (r, e, fd, ars))], Node.Enter (source, r, fd, ars))]
       | _ -> prev node
   end
 
@@ -823,6 +823,10 @@ struct
 
   let tf_special_call ctx lv f args = S.special ctx lv f args
 
+  let tf_enter var edge prev_node lv (f:fundec) args getl sidel getg sideg = failwith "TODO"
+
+  let tf_combine_env var edge prev_node lv e (f:fundec) args getl sidel getg sideg = failwith "TODO"
+
   let tf_proc var edge prev_node lv e args getl sidel getg sideg d =
     let ctx, r, spawns = common_ctx var edge prev_node d getl sidel getg sideg in
     let functions =
@@ -880,14 +884,16 @@ struct
 
   let tf var getl sidel getg sideg prev_node edge d =
     begin match edge with
-      | Assign (lv,rv) -> tf_assign var edge prev_node lv rv
-      | VDecl (v)      -> tf_vdecl var edge prev_node v
-      | Proc (r,f,ars) -> tf_proc var edge prev_node r f ars
-      | Entry f        -> tf_entry var edge prev_node f
-      | Ret (r,fd)     -> tf_ret var edge prev_node r fd
-      | Test (p,b)     -> tf_test var edge prev_node p b
-      | ASM (_, _, _)  -> tf_asm var edge prev_node (* TODO: use ASM fields for something? *)
-      | Skip           -> tf_skip var edge prev_node
+      | Assign (lv,rv)         -> tf_assign var edge prev_node lv rv
+      | VDecl (v)              -> tf_vdecl var edge prev_node v
+      | Proc (r,f,ars)         -> tf_proc var edge prev_node r f ars
+      | Entry f                -> tf_entry var edge prev_node f
+      | Ret (r,fd)             -> tf_ret var edge prev_node r fd
+      | Test (p,b)             -> tf_test var edge prev_node p b
+      | ASM (_, _, _)          -> tf_asm var edge prev_node (* TODO: use ASM fields for something? *)
+      | Enter (r,f,ars)        -> tf_enter var edge prev_node r f ars
+      | CombineEnv (r,e,f,ars) -> tf_combine_env var edge prev_node r e f ars
+      | Skip                   -> tf_skip var edge prev_node
     end getl sidel getg sideg d
 
   type Goblint_backtrace.mark += TfLocation of location
