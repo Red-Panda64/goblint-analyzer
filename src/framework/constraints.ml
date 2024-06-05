@@ -11,6 +11,61 @@ open GobConfig
 module M = Messages
 
 
+module EnterLifter (S: Spec): Spec =
+struct
+  module Set = SetDomain.Make (Lattice.Prod (S.D) (S.D))
+  module D = Lattice.Lift2 (S.D) (Set)
+  module G = S.G
+  module C = S.C
+  module V = S.V
+
+  let lift x = `Lifted1 x
+  let unlift x = match x with
+    | `Lifted1 x -> x
+    | `Bot -> S.D.bot ()
+    | _ -> failwith "TODO"
+
+  module P =
+  struct
+    include S.P
+    let of_elt x = S.P.of_elt @@ unlift x
+  end
+
+  let name () = "EnterLifter (" ^ S.name () ^ ")"
+
+  type marshal = S.marshal
+  let init = S.init
+  let finalize = S.finalize
+  let startstate v = `Lifted1 (S.startstate v)
+  let exitstate  v = `Lifted1 (S.exitstate v)
+  let morphstate v d = `Lifted1 (S.morphstate v (unlift d))
+
+  let conv (ctx: (D.t, _, _, _) ctx): (S.D.t, _, _, _) ctx =
+    { ctx with
+      local = unlift ctx.local;
+      split = fun d es -> ctx.split (`Lifted1 d) es
+    }
+
+  let query ctx (type a) (q: a Queries.t): a Queries.result = S.query (conv ctx) q
+  let branch ctx e pos = `Lifted1 (S.branch (conv ctx) e pos)
+  let assign ctx lval expr = `Lifted1 (S.assign (conv ctx) lval expr)
+  let vdecl ctx v = `Lifted1 (S.vdecl (conv ctx) v)
+  let enter ctx r f args = List.map (fun (x, y) -> lift x, lift y) @@ S.enter (conv ctx) r f args
+  let paths_as_set ctx = List.map lift @@ S.paths_as_set (conv ctx)
+  let body ctx fundec = `Lifted1 (S.body (conv ctx) fundec)
+  let return ctx r f = `Lifted1 (S.return (conv ctx) r f)
+  let combine_env ctx r fe f args fc es f_ask = `Lifted1 (S.combine_env (conv ctx) r fe f args fc (unlift es) f_ask)
+  let combine_assign ctx r fe f args fc es f_ask = `Lifted1 (S.combine_assign (conv ctx) r fe f args fc (unlift es) f_ask)
+  let special ctx r f args = `Lifted1 (S.special (conv ctx) r f args)
+  let threadenter ctx ~multiple lval f args = List.map lift (S.threadenter (conv ctx) ~multiple:multiple lval f args)
+  let threadspawn ctx ~multiple lv f args fctx = `Lifted1 (S.threadspawn (conv ctx) ~multiple:multiple lv f args (conv fctx))
+  let sync ctx reason = `Lifted1 (S.sync (conv ctx) reason)
+  let skip ctx = `Lifted1 (S.skip (conv ctx))
+  let asm ctx = `Lifted1 (S.asm (conv ctx))
+  let event ctx e octx = `Lifted1 (S.event (conv ctx) e (conv octx))
+  let context fd l = S.context fd (unlift l)
+end
+
 (** Lifts a [Spec] so that the domain is [Hashcons]d *)
 module HashconsLifter (S:Spec)
   : Spec with module G = S.G
@@ -597,7 +652,6 @@ module type Increment =
 sig
   val increment: increment_data option
 end
-
 
 (** The main point of this file---generating a [GlobConstrSys] from a [Spec]. *)
 module FromSpec (S:Spec) (Cfg:CfgBackward) (I: Increment)
