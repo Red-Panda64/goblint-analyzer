@@ -10,25 +10,43 @@ open GobConfig
 
 module M = Messages
 
+module EnterDomain (D: Lattice.S) =
+struct
+  module Set = SetDomain.Make (Lattice.Prod (D) (D))
+  include Lattice.Lift2 (D) (Set)
+  type d = D.t
+  type enter = Set.t
+
+  let printXml f x =
+    match x with
+    | `Lifted1 x -> D.printXml f x
+    | `Lifted2 x -> BatPrintf.fprintf f "<value>\n<map>\n<key>\nEnter Pairs\n</key>\n%a</map></value>" Set.printXml x
+    | x -> printXml f x
+
+  let unlift_d x = match x with
+    | `Lifted1 x -> x
+    | `Bot -> D.bot ()
+    | _ -> failwith "not EnterDomain.d"
+  let unlift_enter x = match x with
+    | `Lifted2 x -> x
+    | `Bot -> Set.bot ()
+    | _ -> failwith "not EnterDomain.enter"
+
+  let lift_d x = `Lifted1 x
+  let lift_enter x = `Lifted2 x
+end
 
 module EnterLifter (S: Spec): Spec =
 struct
-  module Set = SetDomain.Make (Lattice.Prod (S.D) (S.D))
-  module D = Lattice.Lift2 (S.D) (Set)
+  module D = EnterDomain(S.D)
   module G = S.G
   module C = S.C
   module V = S.V
 
-  let lift x = `Lifted1 x
-  let unlift x = match x with
-    | `Lifted1 x -> x
-    | `Bot -> S.D.bot ()
-    | _ -> failwith "TODO"
-
   module P =
   struct
     include S.P
-    let of_elt x = S.P.of_elt @@ unlift x
+    let of_elt x = S.P.of_elt @@ D.unlift_d x
   end
 
   let name () = "EnterLifter (" ^ S.name () ^ ")"
@@ -38,11 +56,11 @@ struct
   let finalize = S.finalize
   let startstate v = `Lifted1 (S.startstate v)
   let exitstate  v = `Lifted1 (S.exitstate v)
-  let morphstate v d = `Lifted1 (S.morphstate v (unlift d))
+  let morphstate v d = `Lifted1 (S.morphstate v (D.unlift_d d))
 
   let conv (ctx: (D.t, _, _, _) ctx): (S.D.t, _, _, _) ctx =
     { ctx with
-      local = unlift ctx.local;
+      local = D.unlift_d ctx.local;
       split = fun d es -> ctx.split (`Lifted1 d) es
     }
 
@@ -50,20 +68,20 @@ struct
   let branch ctx e pos = `Lifted1 (S.branch (conv ctx) e pos)
   let assign ctx lval expr = `Lifted1 (S.assign (conv ctx) lval expr)
   let vdecl ctx v = `Lifted1 (S.vdecl (conv ctx) v)
-  let enter ctx r f args = List.map (fun (x, y) -> lift x, lift y) @@ S.enter (conv ctx) r f args
-  let paths_as_set ctx = List.map lift @@ S.paths_as_set (conv ctx)
+  let enter ctx r f args = List.map (fun (x, y) -> D.lift_d x, D.lift_d y) @@ S.enter (conv ctx) r f args
+  let paths_as_set ctx = List.map D.lift_d @@ S.paths_as_set (conv ctx)
   let body ctx fundec = `Lifted1 (S.body (conv ctx) fundec)
   let return ctx r f = `Lifted1 (S.return (conv ctx) r f)
-  let combine_env ctx r fe f args fc es f_ask = `Lifted1 (S.combine_env (conv ctx) r fe f args fc (unlift es) f_ask)
-  let combine_assign ctx r fe f args fc es f_ask = `Lifted1 (S.combine_assign (conv ctx) r fe f args fc (unlift es) f_ask)
+  let combine_env ctx r fe f args fc es f_ask = `Lifted1 (S.combine_env (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
+  let combine_assign ctx r fe f args fc es f_ask = `Lifted1 (S.combine_assign (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
   let special ctx r f args = `Lifted1 (S.special (conv ctx) r f args)
-  let threadenter ctx ~multiple lval f args = List.map lift (S.threadenter (conv ctx) ~multiple:multiple lval f args)
+  let threadenter ctx ~multiple lval f args = List.map D.lift_d (S.threadenter (conv ctx) ~multiple:multiple lval f args)
   let threadspawn ctx ~multiple lv f args fctx = `Lifted1 (S.threadspawn (conv ctx) ~multiple:multiple lv f args (conv fctx))
   let sync ctx reason = `Lifted1 (S.sync (conv ctx) reason)
   let skip ctx = `Lifted1 (S.skip (conv ctx))
   let asm ctx = `Lifted1 (S.asm (conv ctx))
   let event ctx e octx = `Lifted1 (S.event (conv ctx) e (conv octx))
-  let context fd l = S.context fd (unlift l)
+  let context fd l = S.context fd (D.unlift_d l)
 end
 
 (** Lifts a [Spec] so that the domain is [Hashcons]d *)
