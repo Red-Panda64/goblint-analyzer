@@ -36,7 +36,7 @@ struct
   let lift_enter x = `Lifted2 x
 end
 
-module EnterLifter (S: Spec): Spec =
+module EnterLifter (S: Spec): Spec2 =
 struct
   module D = EnterDomain(S.D)
   module G = S.G
@@ -68,7 +68,6 @@ struct
   let branch ctx e pos = `Lifted1 (S.branch (conv ctx) e pos)
   let assign ctx lval expr = `Lifted1 (S.assign (conv ctx) lval expr)
   let vdecl ctx v = `Lifted1 (S.vdecl (conv ctx) v)
-  let enter ctx r f args = List.map (fun (x, y) -> D.lift_d x, D.lift_d y) @@ S.enter (conv ctx) r f args
   let paths_as_set ctx = List.map D.lift_d @@ S.paths_as_set (conv ctx)
   let body ctx fundec = `Lifted1 (S.body (conv ctx) fundec)
   let return ctx r f = `Lifted1 (S.return (conv ctx) r f)
@@ -81,7 +80,10 @@ struct
   let skip ctx = `Lifted1 (S.skip (conv ctx))
   let asm ctx = `Lifted1 (S.asm (conv ctx))
   let event ctx e octx = `Lifted1 (S.event (conv ctx) e (conv octx))
-  let context fd l = S.context fd (D.unlift_d l)
+  let context ctx fd l = S.context (conv ctx) fd (D.unlift_d l)
+  let split ctx d = List.map (fun (x,y) -> D.lift_d x, D.lift_d y) @@ D.Set.elements @@ D.unlift_enter d
+  let enter ctx r f args = D.lift_enter @@ D.Set.of_list @@ S.enter (conv ctx) r f args
+  let startcontext = S.startcontext
 end
 
 (** Lifts a [Spec] so that the domain is [Hashcons]d *)
@@ -672,7 +674,7 @@ sig
 end
 
 (** The main point of this file---generating a [GlobConstrSys] from a [Spec]. *)
-module FromSpec (S:Spec) (Cfg:CfgBackward) (I: Increment)
+module FromSpec (S:Spec2) (Cfg:CfgBackward) (I: Increment)
   : sig
     include GlobConstrSys with module LVar = VarF (S.C)
                            and module GVar = GVarF (S.V)
@@ -880,7 +882,8 @@ struct
       if M.tracing then M.traceu "combine" "combined local: %a" S.D.pretty r;
       r
     in
-    let paths = S.enter ctx lv f args in
+    let entered = S.enter ctx lv f args in
+    let paths = S.split ctx entered in
     let paths = List.map (fun (c,v) -> (c, S.context ctx f v, v)) paths in
     List.iter (fun (c,fc,v) -> if not (S.D.is_bot v) then sidel (FunctionEntry f, fc) v) paths;
     let paths = List.map (fun (c,fc,v) -> (c, fc, if S.D.is_bot v then v else getl (Function f, fc))) paths in

@@ -275,6 +275,14 @@ sig
   val event : (D.t, G.t, C.t, V.t) ctx -> Events.t -> (D.t, G.t, C.t, V.t) ctx -> D.t
 end
 
+module type Spec2 =
+sig
+  include Spec
+
+  val enter: (D.t, G.t, C.t, V.t) ctx -> lval option -> fundec -> exp list -> D.t
+  val split: (D.t, G.t, C.t, V.t) ctx -> D.t -> (D.t * D.t) list
+end
+
 module type MCPA =
 sig
   include Printable.S
@@ -432,7 +440,7 @@ end
 
 module type SpecSys =
 sig
-  module Spec: Spec
+  module Spec: Spec2
   module EQSys: ConstrSys.GlobConstrSys with module LVar = VarF (Spec.C)
                                and module GVar = GVarF (Spec.V)
                                and module D = Spec.D

@@ -179,7 +179,7 @@ struct
     | s -> failwith @@ "Unsupported value for option `result`: "^s
 end
 
-module ResultType2 (S: Analyses.Spec) =
+module ResultType2 (S: Analyses.Spec2) =
 struct
   open S
   include Printable.Prod3 (C) (D) (CilType.Fundec)
