@@ -31,7 +31,7 @@ type t =
     * is always there is for VLA. If there is a VDecl edge, it is where the declaration originally
     * appeared *)
   | Enter of CilType.Lval.t option * CilType.Fundec.t * CilType.Exp.t list
-  | CombineEnv of CilType.Lval.t option * CilType.Exp.t * CilType.Fundec.t * CilType.Exp.t list
+  | Combine of CilType.Lval.t option * CilType.Exp.t * CilType.Fundec.t * CilType.Exp.t list
   | Skip
   (** This is here for historical reasons. I never use Skip edges! *)
 [@@deriving eq, ord, hash]
@@ -49,7 +49,7 @@ let pretty () = function
   | Skip -> Pretty.text "skip"
   | VDecl v -> Cil.defaultCilPrinter#pVDecl () v
   | Enter _ -> Pretty.text "Enter"
-  | CombineEnv _ -> Pretty.text "Combine"
+  | Combine _ -> Pretty.text "Combine"
 
 let pretty_plain () = function
   | Assign (lv,rv) -> dprintf "Assign '%a = %a' " d_lval lv d_exp rv
@@ -63,7 +63,7 @@ let pretty_plain () = function
   | Skip -> text "Skip"
   | VDecl v -> dprintf "VDecl '%a %s;'" d_type v.vtype v.vname
   | Enter _ -> text "Enter"
-  | CombineEnv _ -> text "Combine"
+  | Combine _ -> text "Combine"
 
 
 let to_yojson e =
@@ -115,7 +115,7 @@ let to_yojson e =
         ("type", `String "nop");
       ]
     | Enter _ -> failwith "unimplemented"
-    | CombineEnv _ -> failwith "unimplemented"
+    | Combine _ -> failwith "unimplemented"
   in
   `Assoc ([
       ("string", `String (GobPretty.sprint pretty e))

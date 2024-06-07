@@ -93,6 +93,8 @@ struct
             ) stmts
         ) prevs
     | FunctionEntry _ | Function _ -> None
+    | Enter _ | Combine _ -> None
+    (* The notion of a loop head is applicable to the special Enter/Combine nodes, as Combine never has a successor in the cfg *)
 end
 
 module YamlInvariant (FileCfg: MyCFG.FileCfg) =
@@ -113,6 +115,9 @@ struct
         None
     | FunctionEntry _ | Function _ ->
       (* avoid FunctionEntry/Function, because their locations are not inside the function where asserts could be inserted *)
+      None
+    | Enter _ | Combine _ ->
+      (* avoid Enter/Combine, because they are pseudo-cfg nodes, if you will. They do not correspond to particular C program points. *)
       None
 
   let is_invariant_node n = Option.is_some (location_location n)

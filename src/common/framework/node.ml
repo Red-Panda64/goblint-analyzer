@@ -17,7 +17,7 @@ let rec pretty_plain () = function
   | Function f -> text "Function " ++ text f.svar.vname
   | FunctionEntry f -> text "FunctionEntry " ++ text f.svar.vname
   | Enter (source, _, f, _) -> text "Enter " ++ text f.svar.vname ++ text " from " ++ pretty_plain () source
-  | CombineEnv (source, _, _, f, _) -> text "CombineEnv " ++ text f.svar.vname ++ text " with " ++ pretty_plain () source
+  | Combine (source, _, _, f, _) -> text "Combine " ++ text f.svar.vname ++ text " with " ++ pretty_plain () source
 
 (* TODO: remove this? *)
 (** Pretty node plainly with stmt location. *)
@@ -26,7 +26,7 @@ let rec pretty_plain_short () = function
   | Function f -> text "Function " ++ text f.svar.vname
   | FunctionEntry f -> text "FunctionEntry " ++ text f.svar.vname
   | Enter (source, _, f, _) -> text "Enter " ++ text f.svar.vname ++ text " from " ++ pretty_plain_short () source
-  | CombineEnv (source, _, _, f, _) -> text "CombineEnv " ++ text f.svar.vname ++ text " with " ++ pretty_plain_short () source
+  | Combine (source, _, _, f, _) -> text "Combine " ++ text f.svar.vname ++ text " with " ++ pretty_plain_short () source
 
 (** Pretty node for solver variable tracing with short stmt. *)
 let rec pretty_trace () = function
@@ -34,7 +34,7 @@ let rec pretty_trace () = function
   | Function      fd        -> dprintf "call of %s (%d)" fd.svar.vname fd.svar.vid
   | FunctionEntry fd        -> dprintf "entry state of %s (%d)" fd.svar.vname fd.svar.vid
   | Enter (source, _, fd, _)      -> dprintf "enter %s (%d) from %a" fd.svar.vname fd.svar.vid pretty_trace source
-  | CombineEnv (source, _, _, fd, _) -> dprintf "combine %s (%d) with %a" fd.svar.vname fd.svar.vid pretty_trace source
+  | Combine (source, _, _, fd, _) -> dprintf "combine %s (%d) with %a" fd.svar.vname fd.svar.vid pretty_trace source
 
 (** Output functions for Printable interface *)
 let pretty () x = pretty_trace () x
@@ -52,7 +52,7 @@ let rec show_id = function
   | Function fd             -> "ret" ^ string_of_int fd.svar.vid
   | FunctionEntry fd        -> "fun" ^ string_of_int fd.svar.vid
   | Enter (source, _, fd, _)      -> "enter" ^ string_of_int fd.svar.vid ^ "[" ^ show_id source ^ "]"
-  | CombineEnv (source, _, _, fd, _) -> "combine_env" ^ string_of_int fd.svar.vid ^ "[" ^ show_id source ^ "]"
+  | Combine (source, _, _, fd, _) -> "combine_env" ^ string_of_int fd.svar.vid ^ "[" ^ show_id source ^ "]"
 
 
 (** Show node label for CFG. *)
@@ -61,7 +61,7 @@ let rec show_cfg = function
   | Function fd             -> "return of " ^ fd.svar.vname ^ "()"
   | FunctionEntry fd        -> fd.svar.vname ^ "()"
   | Enter (source, _, fd, _)      -> "enter " ^ fd.svar.vname ^ "() from " ^ show_cfg source
-  | CombineEnv (source, _, _, fd, _) -> "combine_env" ^ fd.svar.vname ^ "() with " ^ show_cfg source
+  | Combine (source, _, _, fd, _) -> "combine_env" ^ fd.svar.vname ^ "() with " ^ show_cfg source
 
 (** Find [fundec] which the node is in. In an incremental run this might yield old fundecs for pseudo-return nodes from the old file. *)
 let find_fundec (node: t) =
@@ -70,7 +70,7 @@ let find_fundec (node: t) =
   | Function fd
   | FunctionEntry fd -> fd
   | Enter (_, _, fd, _) -> fd
-  | CombineEnv (_, _, _, fd, _) -> fd
+  | Combine (_, _, _, fd, _) -> fd
 
 (** @raise Not_found *)
 let of_id s =

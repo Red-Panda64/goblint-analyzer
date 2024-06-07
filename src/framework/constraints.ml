@@ -698,7 +698,7 @@ struct
     include Cfg
     let prev node = match node with
       | Node.Enter (source, r, fd, ars) -> [([(Node.location source, Edge.Enter (r, fd, ars))], source)]
-      | Node.CombineEnv (source, r, e, fd, ars) -> [([(Node.location source, Edge.CombineEnv (r, e, fd, ars))], Node.Enter (source, r, fd, ars))]
+      | Node.Combine (source, r, e, fd, ars) -> [([(Node.location source, Combine (r, e, fd, ars))], Node.Enter (source, r, fd, ars))]
       | _ -> prev node
   end
 
@@ -831,7 +831,7 @@ struct
     common_join ctx (S.branch ctx e tv) !r !spawns
 
   let tf_normal_call (n, c) lv e (f:fundec) args getl sidel getg sideg =
-    getl (Node.CombineEnv (n, lv, e, f, args), ((Obj.obj c): unit -> S.C.t) ())
+    getl (Node.Combine (n, lv, e, f, args), ((Obj.obj c): unit -> S.C.t) ())
 
   let tf_special_call ctx lv f args = S.special ctx lv f args
 
@@ -845,7 +845,7 @@ struct
     List.iter (fun (c,fc,v) -> if not (S.D.is_bot v) then sidel (FunctionEntry f, fc) v) paths;
     entered
 
-  let tf_combine_env var edge prev_node lv e (f:fundec) args getl sidel getg sideg d =
+  let tf_combine var edge prev_node lv e (f:fundec) args getl sidel getg sideg d =
     let paths = S.split d in
     let ctx, _, _ = common_ctx var edge prev_node (S.D.top ()) getl sidel getg sideg in
     let paths = add_callee_context ctx f paths in
@@ -977,7 +977,7 @@ struct
       | Test (p,b)             -> tf_test var edge prev_node p b
       | ASM (_, _, _)          -> tf_asm var edge prev_node (* TODO: use ASM fields for something? *)
       | Enter (r,f,ars)        -> tf_enter var edge prev_node r f ars
-      | CombineEnv (r,e,f,ars) -> tf_combine_env var edge prev_node r e f ars
+      | Combine (r,e,f,ars) -> tf_combine var edge prev_node r e f ars
       | Skip                   -> tf_skip var edge prev_node
     end getl sidel getg sideg d
 
