@@ -648,7 +648,7 @@ struct
           iter (fun (node, v) ->
               let loc = match node with
                 | Statement s -> Cil.get_stmtLoc s.skind (* nosemgrep: cilfacade *) (* Must use CIL's because syntactic search is in CIL. *)
-                | FunctionEntry _ | Function _ | Enter _ | CombineEnv _ -> Node.location node
+                | FunctionEntry _ | Function _ | Enter _ | Combine _ -> Node.location node
               in
               (* join values once for the same location and once for the same node *)
               let join = Option.some % function None -> v | Some v' -> Spec.D.join v v' in

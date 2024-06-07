@@ -551,6 +551,7 @@ struct
       | Statement _ -> [] (* use default shape *)
       | Function _
       | FunctionEntry _ -> ["shape=box"]
+      | Enter _ | Combine _ -> ["shape=Mcircle"]
     in
     let styles = String.concat "," (label @ shape @ extraNodeStyles n) in
     Format.fprintf out ("\t%a [%s];\n") p_node n styles;

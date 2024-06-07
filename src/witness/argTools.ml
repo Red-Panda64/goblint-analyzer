@@ -40,6 +40,9 @@ struct
       | Statement _ -> [] (* use default shape *)
       | Function _
       | FunctionEntry _ -> ["shape=box"]
+      | Enter _
+      | Combine _ -> failwith "Enter/Combine nodes in dot graph"
+
     in
     let styles = String.concat "," (shape @ NodeStyles.extra_node_styles node) in
     Format.fprintf ppf "@,%a [%s];" dot_node_name node styles;
@@ -81,14 +84,19 @@ struct
     let context_id (n, c, i) = Spec.C.tag c
     let path_id (n, c, i) = i
 
-    let to_string (n, c, i) =
-      (* copied from NodeCtxStackGraphMlWriter *)
-      let c_tag = Spec.C.tag c in
-      let i_str = string_of_int i in
+    let rec to_string ((n:node), c, i) =
       match n with
-      | Statement stmt  -> Printf.sprintf "s%d(%d)[%s]" stmt.sid c_tag i_str
-      | Function f      -> Printf.sprintf "ret%d%s(%d)[%s]" f.svar.vid f.svar.vname c_tag i_str
-      | FunctionEntry f -> Printf.sprintf "fun%d%s(%d)[%s]" f.svar.vid f.svar.vname c_tag i_str
+      | Enter (src, _, f, _) -> Printf.sprintf "enter%d%s-from%s" f.svar.vid f.svar.vname @@ to_string (src, c, i)
+      | Combine (src, _, _, f, _) -> Printf.sprintf "combine%d%s-with%s" f.svar.vid f.svar.vname @@ to_string (src, c, i)
+      | _ ->
+        (* copied from NodeCtxStackGraphMlWriter *)
+        let c_tag = Spec.C.tag c in
+        let i_str = string_of_int i in
+        match n with
+        | Statement stmt  -> Printf.sprintf "s%d(%d)[%s]" stmt.sid c_tag i_str
+        | Function f      -> Printf.sprintf "ret%d%s(%d)[%s]" f.svar.vid f.svar.vname c_tag i_str
+        | FunctionEntry f -> Printf.sprintf "fun%d%s(%d)[%s]" f.svar.vid f.svar.vname c_tag i_str
+        | Enter _ | Combine _ -> failwith "unreachable"
 
     (* TODO: less hacky way (without ask_indices) to move node *)
     let is_live (n, c, i) = not (Spec.D.is_bot (get (n, c)))
