@@ -417,7 +417,7 @@ struct
       in
       let args = List.map (fun x -> MyCFG.unknown_exp) fd.sformals in
       let entered = Spec.enter ctx None fd args in
-      let ents = Spec.split ctx entered in
+      let ents = Spec.split entered in
       List.map (fun (_,s) -> fd, s) ents
     in
 
