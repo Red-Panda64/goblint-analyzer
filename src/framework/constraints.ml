@@ -81,7 +81,8 @@ struct
   let asm ctx = `Lifted1 (S.asm (conv ctx))
   let event ctx e octx = `Lifted1 (S.event (conv ctx) e (conv octx))
   let context ctx fd l = S.context (conv ctx) fd (D.unlift_d l)
-  let split ctx d = List.map (fun (x,y) -> D.lift_d x, D.lift_d y) @@ D.Set.elements @@ D.unlift_enter d
+
+  let split d = List.map (fun (x,y) -> D.lift_d x, D.lift_d y) @@ D.Set.elements @@ D.unlift_enter d
   let enter ctx r f args = D.lift_enter @@ D.Set.of_list @@ S.enter (conv ctx) r f args
   let startcontext = S.startcontext
 end
@@ -829,13 +830,37 @@ struct
     let ctx, r, spawns = common_ctx var edge prev_node d getl sidel getg sideg in
     common_join ctx (S.branch ctx e tv) !r !spawns
 
-  let tf_normal_call ctx lv e (f:fundec) args getl sidel getg sideg =
+  let tf_normal_call (n, c) lv e (f:fundec) args getl sidel getg sideg =
+    getl (Node.CombineEnv (n, lv, e, f, args), ((Obj.obj c): unit -> S.C.t) ())
+
+  let tf_special_call ctx lv f args = S.special ctx lv f args
+
+  let add_callee_context ctx f = List.map (fun (c,v) -> (c, S.context ctx f v, v)) 
+
+  let tf_enter var edge prev_node lv (f:fundec) args getl sidel getg sideg d =
+    let ctx, r, spawns = common_ctx var edge prev_node d getl sidel getg sideg in
+    let entered = S.enter ctx lv f args in
+    let paths = S.split entered in
+    let paths = add_callee_context ctx f paths in
+    List.iter (fun (c,fc,v) -> if not (S.D.is_bot v) then sidel (FunctionEntry f, fc) v) paths;
+    entered
+
+  let tf_combine_env var edge prev_node lv e (f:fundec) args getl sidel getg sideg d =
+    let paths = S.split d in
+    let ctx, _, _ = common_ctx var edge prev_node (S.D.top ()) getl sidel getg sideg in
+    let paths = add_callee_context ctx f paths in
+    let paths = List.map (fun (c,fc,v) -> (c, fc, if S.D.is_bot v then v else getl (Function f, fc))) paths in
+    (* Don't filter bot paths, otherwise LongjmpLifter is not called. *)
+    (* let paths = List.filter (fun (c,fc,v) -> not (D.is_bot v)) paths in *)
+    let paths = List.map (Tuple3.map2 Option.some) paths in
+    if M.tracing then M.traceli "combine" "combining";
+
     let combine (cd, fc, fd) =
       if M.tracing then M.traceli "combine" "local: %a" S.D.pretty cd;
       if M.tracing then M.trace "combine" "function: %a" S.D.pretty fd;
-      let rec cd_ctx =
+      let cd_ctx =
         { ctx with
-          ask = (fun (type a) (q: a Queries.t) -> S.query cd_ctx q);
+          ask = (fun (type a) (q: a Queries.t) -> S.query ctx q);
           local = cd;
         }
       in
@@ -882,25 +907,10 @@ struct
       if M.tracing then M.traceu "combine" "combined local: %a" S.D.pretty r;
       r
     in
-    let entered = S.enter ctx lv f args in
-    let paths = S.split ctx entered in
-    let paths = List.map (fun (c,v) -> (c, S.context ctx f v, v)) paths in
-    List.iter (fun (c,fc,v) -> if not (S.D.is_bot v) then sidel (FunctionEntry f, fc) v) paths;
-    let paths = List.map (fun (c,fc,v) -> (c, fc, if S.D.is_bot v then v else getl (Function f, fc))) paths in
-    (* Don't filter bot paths, otherwise LongjmpLifter is not called. *)
-    (* let paths = List.filter (fun (c,fc,v) -> not (D.is_bot v)) paths in *)
-    let paths = List.map (Tuple3.map2 Option.some) paths in
-    if M.tracing then M.traceli "combine" "combining";
     let paths = List.map combine paths in
     let r = List.fold_left D.join (D.bot ()) paths in
     if M.tracing then M.traceu "combine" "combined: %a" S.D.pretty r;
     r
-
-  let tf_special_call ctx lv f args = S.special ctx lv f args
-
-  let tf_enter var edge prev_node lv (f:fundec) args getl sidel getg sideg = failwith "TODO"
-
-  let tf_combine_env var edge prev_node lv e (f:fundec) args getl sidel getg sideg = failwith "TODO"
 
   let tf_proc var edge prev_node lv e args getl sidel getg sideg d =
     let ctx, r, spawns = common_ctx var edge prev_node d getl sidel getg sideg in
@@ -928,7 +938,7 @@ struct
                 M.info ~category:Analyzer "Using special for defined function %s" f.vname;
                 tf_special_call ctx lv f args
               | fd ->
-                tf_normal_call ctx lv e fd args getl sidel getg sideg
+                tf_normal_call var lv e fd args getl sidel getg sideg
               | exception Not_found ->
                 tf_special_call ctx lv f args)
           end
