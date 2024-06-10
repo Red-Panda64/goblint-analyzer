@@ -9,20 +9,20 @@ type node = Node.t =
   | Statement of CilType.Stmt.t
   | FunctionEntry of CilType.Fundec.t
   | Function of CilType.Fundec.t
-  | Enter of Node.t * CilType.Lval.t option * CilType.Fundec.t * CilType.Exp.t list
-  | Combine of Node.t * CilType.Lval.t option * CilType.Exp.t * CilType.Fundec.t * CilType.Exp.t list
+  | Enter of Node.t * CilType.Fundec.t * Edge.proc_edge
+  | Combine of Node.t * CilType.Fundec.t * Edge.proc_edge
 
 (** Re-exported [Edge.t] with constructors. See [Edge.t] for documentation. *)
 type edge = Edge.t =
   | Assign of CilType.Lval.t * CilType.Exp.t
-  | Proc of CilType.Lval.t option * CilType.Exp.t * CilType.Exp.t list
+  | Proc of Edge.proc_edge
   | Entry of CilType.Fundec.t
   | Ret of CilType.Exp.t option * CilType.Fundec.t
   | Test of CilType.Exp.t * bool
   | ASM of string list * Edge.asm_out * Edge.asm_in
   | VDecl of CilType.Varinfo.t
-  | Enter of CilType.Lval.t option * CilType.Fundec.t * CilType.Exp.t list
-  | Combine of CilType.Lval.t option * CilType.Exp.t * CilType.Fundec.t * CilType.Exp.t list
+  | Enter of CilType.Fundec.t * Edge.proc_edge
+  | Combine of CilType.Fundec.t * Edge.proc_edge
   | Skip
 
 

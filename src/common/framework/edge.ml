@@ -7,10 +7,19 @@ open Pretty
 type asm_out = (string option * string * CilType.Lval.t) list [@@deriving eq, ord, hash, to_yojson]
 type asm_in  = (string option * string * CilType.Exp.t ) list [@@deriving eq, ord, hash, to_yojson]
 
+type proc_edge = CilType.Lval.t option * CilType.Exp.t * CilType.Exp.t list [@@deriving eq, ord, hash, to_yojson]
+
+let proc_edge_to_yojson_list (lval, function_, args) =
+  [
+    ("lval", [%to_yojson: CilType.Lval.t option] lval);
+    ("function", CilType.Exp.to_yojson function_);
+    ("args", [%to_yojson: CilType.Exp.t list] args);
+  ]
+
 type t =
   | Assign of CilType.Lval.t * CilType.Exp.t
   (** Assignments lval = exp *)
-  | Proc of CilType.Lval.t option * CilType.Exp.t * CilType.Exp.t list
+  | Proc of proc_edge
   (** Function calls of the form lva = fexp (e1, e2, ...) *)
   | Entry of CilType.Fundec.t
   (** Entry edge that relates function declaration to function body. You can use
@@ -30,8 +39,8 @@ type t =
     * determined by alwaysGenerateVarDecl in cabs2cil.ml in CIL. One case in which a VDecl
     * is always there is for VLA. If there is a VDecl edge, it is where the declaration originally
     * appeared *)
-  | Enter of CilType.Lval.t option * CilType.Fundec.t * CilType.Exp.t list
-  | Combine of CilType.Lval.t option * CilType.Exp.t * CilType.Fundec.t * CilType.Exp.t list
+  | Enter of CilType.Fundec.t * proc_edge
+  | Combine of CilType.Fundec.t * proc_edge
   | Skip
   (** This is here for historical reasons. I never use Skip edges! *)
 [@@deriving eq, ord, hash]
@@ -80,13 +89,8 @@ let to_yojson e =
         ("exp", CilType.Exp.to_yojson exp);
         ("branch", `Bool branch);
       ]
-    | Proc (lval, function_, args) ->
-      [
-        ("type", `String "call");
-        ("lval", [%to_yojson: CilType.Lval.t option] lval);
-        ("function", CilType.Exp.to_yojson function_);
-        ("args", [%to_yojson: CilType.Exp.t list] args);
-      ]
+    | Proc proc_edge ->
+      ("type", `String "call") :: proc_edge_to_yojson_list proc_edge
     | Entry function_ ->
       [
         ("type", `String "entry");
@@ -114,8 +118,9 @@ let to_yojson e =
       [
         ("type", `String "nop");
       ]
-    | Enter _ -> failwith "unimplemented"
-    | Combine _ -> failwith "unimplemented"
+    | Enter (f, edge) -> ("type", `String "enter") :: ("function_resolved", CilType.Fundec.to_yojson f) :: proc_edge_to_yojson_list edge
+    | Combine (f, edge) -> ("type", `String "combine") :: ("function_resolved", CilType.Fundec.to_yojson f) :: proc_edge_to_yojson_list edge
+
   in
   `Assoc ([
       ("string", `String (GobPretty.sprint pretty e))
