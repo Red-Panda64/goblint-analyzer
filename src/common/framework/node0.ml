@@ -11,8 +11,8 @@ type t =
   (** *)
   | Function of CilType.Fundec.t
   (** The variable information associated with the function declaration. *)
-  | Enter of t * CilType.Lval.t option * CilType.Fundec.t * CilType.Exp.t list
-  | Combine of t * CilType.Lval.t option * CilType.Exp.t * CilType.Fundec.t * CilType.Exp.t list
+  | Enter of t * CilType.Fundec.t * Edge.proc_edge
+  | Combine of t * CilType.Fundec.t * Edge.proc_edge
 [@@deriving eq, ord, hash, to_yojson]
 
 let rec location (node: t) =
@@ -20,7 +20,7 @@ let rec location (node: t) =
   | Statement stmt -> Cilfacade0.get_stmtLoc stmt
   | Function fd -> fd.svar.vdecl
   | FunctionEntry fd -> fd.svar.vdecl
-  | Enter (source, _, _, _) -> location source
-  | Combine (source, _, _, _, _) -> location source
+  | Enter (source, _, _) -> location source
+  | Combine (source, _, _) -> location source
 
 let current_node: t option ref = ref None

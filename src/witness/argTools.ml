@@ -86,8 +86,8 @@ struct
 
     let rec to_string ((n:node), c, i) =
       match n with
-      | Enter (src, _, f, _) -> Printf.sprintf "enter%d%s-from%s" f.svar.vid f.svar.vname @@ to_string (src, c, i)
-      | Combine (src, _, _, f, _) -> Printf.sprintf "combine%d%s-with%s" f.svar.vid f.svar.vname @@ to_string (src, c, i)
+      | Enter (src, f, _) -> Printf.sprintf "enter%d%s-from%s" f.svar.vid f.svar.vname @@ to_string (src, c, i)
+      | Combine (src, f, _) -> Printf.sprintf "combine%d%s-with%s" f.svar.vid f.svar.vname @@ to_string (src, c, i)
       | _ ->
         (* copied from NodeCtxStackGraphMlWriter *)
         let c_tag = Spec.C.tag c in
