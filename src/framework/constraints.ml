@@ -32,8 +32,8 @@ struct
     | `Bot -> Set.bot ()
     | _ -> failwith "not EnterDomain.enter"
 
-  let lift_d x = `Lifted1 x
-  let lift_enter x = `Lifted2 x
+  let lift_d x = if D.is_bot x then `Bot else `Lifted1 x
+  let lift_enter x = if Set.is_bot x then `Bot else `Lifted2 x
 end
 
 module EnterLifter (S: Spec): Spec2 =
@@ -54,32 +54,32 @@ struct
   type marshal = S.marshal
   let init = S.init
   let finalize = S.finalize
-  let startstate v = `Lifted1 (S.startstate v)
-  let exitstate  v = `Lifted1 (S.exitstate v)
-  let morphstate v d = `Lifted1 (S.morphstate v (D.unlift_d d))
+  let startstate v = D.lift_d (S.startstate v)
+  let exitstate  v = D.lift_d (S.exitstate v)
+  let morphstate v d = D.lift_d (S.morphstate v (D.unlift_d d))
 
   let conv (ctx: (D.t, _, _, _) ctx): (S.D.t, _, _, _) ctx =
     { ctx with
       local = D.unlift_d ctx.local;
-      split = fun d es -> ctx.split (`Lifted1 d) es
+      split = fun d es -> ctx.split (D.lift_d d) es
     }
 
   let query ctx (type a) (q: a Queries.t): a Queries.result = S.query (conv ctx) q
-  let branch ctx e pos = `Lifted1 (S.branch (conv ctx) e pos)
-  let assign ctx lval expr = `Lifted1 (S.assign (conv ctx) lval expr)
-  let vdecl ctx v = `Lifted1 (S.vdecl (conv ctx) v)
+  let branch ctx e pos = D.lift_d (S.branch (conv ctx) e pos)
+  let assign ctx lval expr = D.lift_d (S.assign (conv ctx) lval expr)
+  let vdecl ctx v = D.lift_d (S.vdecl (conv ctx) v)
   let paths_as_set ctx = List.map D.lift_d @@ S.paths_as_set (conv ctx)
-  let body ctx fundec = `Lifted1 (S.body (conv ctx) fundec)
-  let return ctx r f = `Lifted1 (S.return (conv ctx) r f)
-  let combine_env ctx r fe f args fc es f_ask = `Lifted1 (S.combine_env (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
-  let combine_assign ctx r fe f args fc es f_ask = `Lifted1 (S.combine_assign (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
-  let special ctx r f args = `Lifted1 (S.special (conv ctx) r f args)
+  let body ctx fundec = D.lift_d (S.body (conv ctx) fundec)
+  let return ctx r f = D.lift_d (S.return (conv ctx) r f)
+  let combine_env ctx r fe f args fc es f_ask = D.lift_d (S.combine_env (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
+  let combine_assign ctx r fe f args fc es f_ask = D.lift_d (S.combine_assign (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
+  let special ctx r f args = D.lift_d (S.special (conv ctx) r f args)
   let threadenter ctx ~multiple lval f args = List.map D.lift_d (S.threadenter (conv ctx) ~multiple:multiple lval f args)
-  let threadspawn ctx ~multiple lv f args fctx = `Lifted1 (S.threadspawn (conv ctx) ~multiple:multiple lv f args (conv fctx))
-  let sync ctx reason = `Lifted1 (S.sync (conv ctx) reason)
-  let skip ctx = `Lifted1 (S.skip (conv ctx))
-  let asm ctx = `Lifted1 (S.asm (conv ctx))
-  let event ctx e octx = `Lifted1 (S.event (conv ctx) e (conv octx))
+  let threadspawn ctx ~multiple lv f args fctx = D.lift_d (S.threadspawn (conv ctx) ~multiple:multiple lv f args (conv fctx))
+  let sync ctx reason = D.lift_d (S.sync (conv ctx) reason)
+  let skip ctx = D.lift_d (S.skip (conv ctx))
+  let asm ctx = D.lift_d (S.asm (conv ctx))
+  let event ctx e octx = D.lift_d (S.event (conv ctx) e (conv octx))
   let context ctx fd l = S.context (conv ctx) fd (D.unlift_d l)
 
   let split d = List.map (fun (x,y) -> D.lift_d x, D.lift_d y) @@ D.Set.elements @@ D.unlift_enter d
