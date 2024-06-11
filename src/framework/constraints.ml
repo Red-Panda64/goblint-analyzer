@@ -831,7 +831,8 @@ struct
     common_join ctx (S.branch ctx e tv) !r !spawns
 
   let tf_normal_call (n, c) lv e (f:fundec) args getl sidel getg sideg =
-    getl (Node.Combine (n, f, (lv, e, args)), ((Obj.obj c): unit -> S.C.t) ())
+    let source_node = Option.get !current_node in
+    getl (Node.Combine (source_node, f, (lv, e, args)), ((Obj.obj c): unit -> S.C.t) ())
 
   let tf_special_call ctx lv f args = S.special ctx lv f args
 
