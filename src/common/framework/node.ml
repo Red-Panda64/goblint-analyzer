@@ -64,13 +64,13 @@ let rec show_cfg = function
   | Combine (source, fd, _) -> "combine_env" ^ fd.svar.vname ^ "() with " ^ show_cfg source
 
 (** Find [fundec] which the node is in. In an incremental run this might yield old fundecs for pseudo-return nodes from the old file. *)
-let find_fundec (node: t) =
+let rec find_fundec (node: t) =
   match node with
   | Statement stmt -> Cilfacade.find_stmt_fundec stmt
   | Function fd
   | FunctionEntry fd -> fd
-  | Enter (_, fd, _) -> fd
-  | Combine (_, fd, _) -> fd
+  | Enter (n, _, _) -> find_fundec n
+  | Combine (n, _, _) -> find_fundec n
 
 (** @raise Not_found *)
 let of_id s =
