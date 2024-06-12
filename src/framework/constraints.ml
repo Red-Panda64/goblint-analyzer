@@ -64,7 +64,13 @@ struct
       split = fun d es -> ctx.split (D.lift_d d) es
     }
 
-  let query ctx (type a) (q: a Queries.t): a Queries.result = S.query (conv ctx) q
+  let query ctx (type a) (q: a Queries.t): a Queries.result =
+    let module Result = (val Queries.Result.lattice q) in
+    match ctx.local with
+    | `Lifted1 _ -> S.query (conv ctx) q
+    | `Lifted2 _ | `Top -> Queries.Result.top q (* TODO: merge query across split local states akin to PathSensitive2? *)
+    | `Bot -> Queries.Result.bot q
+
   let branch ctx e pos = D.lift_d (S.branch (conv ctx) e pos)
   let assign ctx lval expr = D.lift_d (S.assign (conv ctx) lval expr)
   let vdecl ctx v = D.lift_d (S.vdecl (conv ctx) v)
