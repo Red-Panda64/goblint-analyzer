@@ -877,6 +877,7 @@ struct
            Each `Return sync is done before joining, so joined value may be unsound.
            Since sync is normally done before tf (in common_ctx), simulate it here for fd. *)
         (* TODO: don't do this extra sync here *)
+        (* Construct a context a pseudo-edge from the return node of f and the result of f *)
         let rec sync_ctx =
           { ctx with
             ask = (fun (type a) (q: a Queries.t) -> S.query sync_ctx q);
@@ -886,6 +887,7 @@ struct
         in
         (* TODO: more accurate ctx? *)
         let synced = sync sync_ctx in
+        (* create new context with synced local *)
         let rec fd_ctx =
           { sync_ctx with
             ask = (fun (type a) (q: a Queries.t) -> S.query fd_ctx q);
