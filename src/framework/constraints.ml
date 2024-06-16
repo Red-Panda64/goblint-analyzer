@@ -13,7 +13,7 @@ module M = Messages
 module EnterDomain (D: Lattice.S) =
 struct
   module Set = SetDomain.Make (Lattice.Prod (D) (D))
-  include Lattice.Lift2 (D) (Set)
+  include Lattice.Xor2 (D) (Set)
   type d = D.t
   type enter = Set.t
 
@@ -25,15 +25,15 @@ struct
 
   let unlift_d x = match x with
     | `Lifted1 x -> x
-    | `Bot -> D.bot ()
     | _ -> failwith "not EnterDomain.d"
   let unlift_enter x = match x with
     | `Lifted2 x -> x
-    | `Bot -> Set.bot ()
+    | x when is_bot x -> Set.bot ()
+    | x when is_top x -> Set.top ()
     | _ -> failwith "not EnterDomain.enter"
 
-  let lift_d x = if D.is_bot x then `Bot else `Lifted1 x
-  let lift_enter x = if Set.is_bot x then `Bot else `Lifted2 x
+  let lift_d x = lift1 x
+  let lift_enter x = lift2 x
 end
 
 module EnterLifter (S: Spec): Spec2 =
@@ -79,7 +79,7 @@ struct
   let return ctx r f = D.lift_d (S.return (conv ctx) r f)
   let combine_env ctx r fe f args fc es f_ask = D.lift_d (S.combine_env (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
   let combine_assign ctx r fe f args fc es f_ask = D.lift_d (S.combine_assign (conv ctx) r fe f args fc (D.unlift_d es) f_ask)
-  let special ctx r f args = D.lift_d (S.special (conv ctx) r f args)
+  let special ctx r f args = D.lift_d @@ S.special (conv ctx) r f args
   let threadenter ctx ~multiple lval f args = List.map D.lift_d (S.threadenter (conv ctx) ~multiple:multiple lval f args)
   let threadspawn ctx ~multiple lv f args fctx = D.lift_d (S.threadspawn (conv ctx) ~multiple:multiple lv f args (conv fctx))
   let sync ctx reason = D.lift_d (S.sync (conv ctx) reason)
