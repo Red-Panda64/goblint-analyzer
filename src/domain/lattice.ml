@@ -414,6 +414,91 @@ end
 
 module Lift2 = Lift2Conf (Printable.DefaultConf)
 
+module Xor2Conf (Conf: Printable.Lift2Conf) (Base1: S) (Base2: S) =
+struct
+  include Printable.Lift2Conf (Conf) (Base1) (Base2)
+
+  let bot () = `Lifted1 (Base1.bot ())
+  let is_bot x = match x with | `Lifted1 x -> Base1.is_bot x | _ -> false
+  let top () = `Lifted1 (Base1.top ())
+  let is_top x = match x with | `Lifted1 x -> Base1.is_top x | _ -> false
+
+  let lift1 x = `Lifted1 x
+  let lift2 x = if Base2.is_bot x then bot () else if Base2.is_top x then top() else `Lifted2 x
+
+  let leq x y =
+    match (x,y) with
+    | (`Lifted1 x, `Lifted1 y) -> Base1.leq x y
+    | (`Lifted2 x, `Lifted2 y) -> Base2.leq x y
+    | (_, x) when is_top x -> true
+    | (x, _) when is_top x -> false
+    | (x, _) when is_bot x -> true
+    | (_, x) when is_bot x -> false
+    | _ -> false
+
+  let pretty_diff () ((x:t),(y:t)): Pretty.doc =
+    match x, y with
+    | `Lifted1 x, `Lifted1 y -> Base1.pretty_diff () (x, y)
+    | `Lifted2 x, `Lifted2 y -> Base2.pretty_diff () (x, y)
+    | _ when leq x y -> Pretty.text "No Changes"
+    | _ -> Pretty.dprintf "%a instead of %a" pretty x pretty y
+
+  let join x y =
+    match (x,y) with
+    | (`Lifted1 x, `Lifted1 y) -> begin
+        try lift1 @@ Base1.join x y
+        with Unsupported _ -> top ()
+      end
+    | (`Lifted2 x, `Lifted2 y) -> begin
+        try lift2 @@ Base2.join x y
+        with Unsupported _ -> top ()
+      end
+    | (x, _) when is_top x -> x
+    | (_, x) when is_top x -> x
+    | (x, y) when is_bot x -> y
+    | (x, y) when is_bot y -> x
+    | _ -> failwith "Xor incompatible"
+
+  let meet x y =
+    match (x,y) with
+    | (`Lifted1 x, `Lifted1 y) -> begin
+        try lift1 @@ Base1.meet x y
+        with Unsupported _ -> bot ()
+      end
+    | (`Lifted2 x, `Lifted2 y) -> begin
+        try lift2 @@ Base2.meet x y
+        with Unsupported _ -> bot ()
+      end
+    | (x, y) when is_top x -> y
+    | (y, x) when is_top x -> y
+    | (x, _) when is_bot x -> x
+    | (_, x) when is_bot x -> x
+    | _ -> failwith "Xor incompatible"
+
+  let widen x y =
+    match (x,y) with
+    | (`Lifted1 x, `Lifted1 y) -> lift1 @@ Base1.widen x y
+    | (`Lifted2 x, `Lifted2 y) -> lift2 @@ Base2.widen x y
+    | (x, _) when is_top x -> x
+    | (_, x) when is_top x -> x
+    | (x, y) when is_bot x -> y
+    | (y, x) when is_bot x -> y
+    | _ -> failwith "Xor incompatible"
+
+  let narrow x y =
+    match (x,y) with
+    | (`Lifted1 x, `Lifted1 y) -> lift1 @@ Base1.narrow x y
+    | (`Lifted2 x, `Lifted2 y) -> lift2 @@ Base2.narrow x y
+    | (x, y) when is_top x -> y
+    | (y, x) when is_top x -> y
+    | (x, y) when is_bot x -> x
+    | (y, x) when is_bot x -> x
+    | _ -> failwith "Xor incompatible"
+
+end
+
+module Xor2 = Xor2Conf (Printable.DefaultConf)
+
 module ProdConf (C: Printable.ProdConfiguration) (Base1: S) (Base2: S) =
 struct
   include Printable.ProdConf (C) (Base1) (Base2)
