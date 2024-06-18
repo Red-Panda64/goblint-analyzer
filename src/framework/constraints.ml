@@ -854,7 +854,7 @@ struct
 
   let tf_combine var edge prev_node lv e (f:fundec) args getl sidel getg sideg d =
     let paths = S.split d in
-    let ctx, _, _ = common_ctx var edge prev_node (S.D.top ()) getl sidel getg sideg in
+    let ctx, r, spawns = common_ctx var edge prev_node (S.D.top ()) getl sidel getg sideg in
     let paths = add_callee_context ctx f paths in
     let paths = List.map (fun (c,fc,v) -> (c, fc, if S.D.is_bot v then v else getl (Function f, fc))) paths in
     (* Don't filter bot paths, otherwise LongjmpLifter is not called. *)
@@ -865,12 +865,11 @@ struct
     let combine (cd, fc, fd) =
       if M.tracing then M.traceli "combine" "local: %a" S.D.pretty cd;
       if M.tracing then M.trace "combine" "function: %a" S.D.pretty fd;
-      let cd_ctx =
+      let rec cd_ctx =
         { ctx with
-          ask = (fun (type a) (q: a Queries.t) -> S.query ctx q);
+          ask = (fun (type a) (q: a Queries.t) -> S.query cd_ctx q);
           local = cd;
-        }
-      in
+        } in
       let fd_ctx =
         (* Inner scope to prevent unsynced fd_ctx from being used. *)
         (* Extra sync in case function has multiple returns.
