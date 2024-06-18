@@ -26,6 +26,8 @@ let eq_node (x, fun1) (y, fun2) ~rename_mapping =
     ((p1 && p2) || not (p1 || p2), rename_mapping) &&>> eq_stmt ~cfg_comp:true (s1, fun1) (s2, fun2)
   | Function f1, Function f2 -> eq_varinfo f1.svar f2.svar ~rename_mapping
   | FunctionEntry f1, FunctionEntry f2 -> eq_varinfo f1.svar f2.svar ~rename_mapping
+  | Enter _, Enter _ | Combine _, Combine _ -> failwith "unreachable"
+  (* Enter and Combine should not exist at this cfg level*)
   | _ -> false, rename_mapping
 
 (* TODO: compare ASMs properly instead of simply always assuming that they are not the same *)
