@@ -117,6 +117,7 @@ struct
       | Statement s when Cilfacade.(StmtH.mem pseudo_return_to_fun s) ->
         (* Exclude pseudo returns from dead lines counting. No user code at "}". *)
         ()
+      | Enter _ | Combine _ -> ()
       | _ ->
         (* Not using Node.location here to have updated locations in incremental analysis.
            See: https://github.com/goblint/analyzer/issues/290#issuecomment-881258091. *)
@@ -646,14 +647,21 @@ struct
           let hashtbl_size = if fast_count node_values then count node_values else 123 in
           let by_loc, by_node = Hashtbl.create hashtbl_size, NodeH.create hashtbl_size in
           iter (fun (node, v) ->
-              let loc = match node with
-                | Statement s -> Cil.get_stmtLoc s.skind (* nosemgrep: cilfacade *) (* Must use CIL's because syntactic search is in CIL. *)
-                | FunctionEntry _ | Function _ | Enter _ | Combine _ -> Node.location node
-              in
-              (* join values once for the same location and once for the same node *)
-              let join = Option.some % function None -> v | Some v' -> Spec.D.join v v' in
-              Hashtbl.modify_opt loc join by_loc;
-              NodeH.modify_opt node join by_node;
+              match node with
+              | Node.Enter _ | Node.Combine _ -> ()
+              (* ignore enter and combine; The value at an enter node is of a different lattice
+                 may not be joined with others, despite sharing a location with combine and the
+                 call edge target. *)
+              | _ ->
+                let loc = match node with
+                  | Statement s -> Cil.get_stmtLoc s.skind (* nosemgrep: cilfacade *) (* Must use CIL's because syntactic search is in CIL. *)
+                  | FunctionEntry _ | Function _ -> Node.location node
+                  | Enter _ | Combine _ -> failwith "unreachable"
+                in
+                (* join values once for the same location and once for the same node *)
+                let join = Option.some % function None -> v | Some v' -> Spec.D.join v v' in
+                Hashtbl.modify_opt loc join by_loc;
+                NodeH.modify_opt node join by_node;
             ) node_values;
           by_loc, by_node
         in
