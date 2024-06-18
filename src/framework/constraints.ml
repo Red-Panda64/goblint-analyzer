@@ -845,8 +845,13 @@ struct
   let add_callee_context ctx f = List.map (fun (c,v) -> (c, S.context ctx f v, v)) 
 
   let tf_enter var edge prev_node lv (f:fundec) args getl sidel getg sideg d =
-    let ctx, r, spawns = common_ctx var edge prev_node d getl sidel getg sideg in
-    let entered = S.enter ctx lv f args in
+    let ctx, _, _ = common_ctx var edge prev_node d getl sidel getg sideg in
+    let rec ctx' = { ctx with
+                     ask = (fun (type a) (q: a Queries.t) -> S.query ctx' q);
+                     split = (fun _ _ -> failwith "split in enter!");
+                     spawn = (fun ?multiple _ _ _ -> failwith "spawn in enter!");
+                   } in
+    let entered = S.enter ctx' lv f args in
     let paths = S.split entered in
     let paths = add_callee_context ctx f paths in
     List.iter (fun (c,fc,v) -> if not (S.D.is_bot v) then sidel (FunctionEntry f, fc) v) paths;
