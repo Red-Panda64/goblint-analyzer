@@ -305,7 +305,10 @@ module Base =
             let was_stable = HM.mem stable y in
             HM.remove stable y;
             HM.remove superstable y;
-            HM.mem called y || destabilize_vs y || b || was_stable && List.mem_cmp S.Var.compare y vs
+            if not @@ HM.mem called y then
+              destabilize_vs y || b || was_stable && List.mem_cmp S.Var.compare y vs
+            else 
+              true
           ) w false
       and solve ?reuse_eq x phase =
         if tracing then trace "sol2" "solve %a, phase: %s, called: %b, stable: %b, wpoint: %s" S.Var.pretty_trace x (show_phase phase) (HM.mem called x) (HM.mem stable x) (format_wpoint x);
