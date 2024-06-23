@@ -845,7 +845,11 @@ struct
   let add_callee_context ctx f = List.map (fun (c,v) -> (c, S.context ctx f v, v)) 
 
   let tf_enter var edge prev_node lv (f:fundec) args getl sidel getg sideg d =
-    let ctx, _, _ = common_ctx var edge prev_node d getl sidel getg sideg in
+    let (node, c) = var in
+    let node = match node with
+      | Node.Enter (source_node, _, _) -> source_node
+      | _ -> failwith "combine edge to non-enter node" in
+    let ctx, _, _ = common_ctx (node, c) edge node d getl sidel getg sideg in
     let rec ctx' = { ctx with
                      ask = (fun (type a) (q: a Queries.t) -> S.query ctx' q);
                      split = (fun _ _ -> failwith "split in enter!");
@@ -858,8 +862,14 @@ struct
     entered
 
   let tf_combine var edge prev_node lv e (f:fundec) args getl sidel getg sideg d =
+    let (node, c) = var in
+    let node = match node with
+      | Node.Combine (source_node, _, _) -> source_node
+      | _ -> failwith "combine edge to non-combine node" in
+    let c' = ((Obj.obj c): unit -> S.C.t) () in
     let paths = S.split d in
-    let ctx, r, spawns = common_ctx var edge prev_node (S.D.top ()) getl sidel getg sideg in
+    let call_origin_d = getl (node, c') in
+    let ctx, r, spawns = common_ctx (node, c) edge node (*prev_node*) call_origin_d getl sidel getg sideg in
     let paths = add_callee_context ctx f paths in
     let paths = List.map (fun (c,fc,v) -> (c, fc, if S.D.is_bot v then v else getl (Function f, fc))) paths in
     (* Don't filter bot paths, otherwise LongjmpLifter is not called. *)
