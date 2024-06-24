@@ -10,9 +10,9 @@ open GobConfig
 
 module M = Messages
 
-module EnterDomain (D: Lattice.S) =
+module EnterDomain (D: Lattice.S) (C: Printable.S) =
 struct
-  module Set = SetDomain.Make (Lattice.Prod (D) (D))
+  module Set = SetDomain.Make (Lattice.Prod3 (D) (Lattice.Fake(C)) (D))
   include Lattice.Xor2 (D) (Set)
   type d = D.t
   type enter = Set.t
@@ -38,7 +38,7 @@ end
 
 module EnterLifter (S: Spec): Spec2 =
 struct
-  module D = EnterDomain(S.D)
+  module D = EnterDomain (S.D) (S.C)
   module G = S.G
   module C = S.C
   module V = S.V
@@ -88,8 +88,9 @@ struct
   let event ctx e octx = D.lift_d (S.event (conv ctx) e (conv octx))
   let context ctx fd l = S.context (conv ctx) fd (D.unlift_d l)
 
-  let split d = List.map (fun (x,y) -> D.lift_d x, D.lift_d y) @@ D.Set.elements @@ D.unlift_enter d
-  let enter ctx r f args = D.lift_enter @@ D.Set.of_list @@ S.enter (conv ctx) r f args
+  let split d = List.map (fun (x,c,y) -> D.lift_d x, c, D.lift_d y) @@ D.Set.elements @@ D.unlift_enter d
+  let enter ctx r f args = let ctx' = conv ctx in
+    D.lift_enter @@ D.Set.of_list @@ List.map (fun (cd, fd) -> cd, S.context ctx' f fd, fd) @@ S.enter ctx' r f args
   let startcontext = S.startcontext
 end
 
@@ -842,8 +843,6 @@ struct
 
   let tf_special_call ctx lv f args = S.special ctx lv f args
 
-  let add_callee_context ctx f = List.map (fun (c,v) -> (c, S.context ctx f v, v)) 
-
   let tf_enter var edge prev_node lv (f:fundec) args getl sidel getg sideg d =
     let (node, c) = var in
     let node = match node with
@@ -857,7 +856,6 @@ struct
                    } in
     let entered = S.enter ctx' lv f args in
     let paths = S.split entered in
-    let paths = add_callee_context ctx f paths in
     List.iter (fun (c,fc,v) -> if not (S.D.is_bot v) then sidel (FunctionEntry f, fc) v) paths;
     entered
 
@@ -870,7 +868,6 @@ struct
     let paths = S.split d in
     let call_origin_d = getl (node, c') in
     let ctx, r, spawns = common_ctx (node, c) edge node (*prev_node*) call_origin_d getl sidel getg sideg in
-    let paths = add_callee_context ctx f paths in
     let paths = List.map (fun (c,fc,v) -> (c, fc, if S.D.is_bot v then v else getl (Function f, fc))) paths in
     (* Don't filter bot paths, otherwise LongjmpLifter is not called. *)
     (* let paths = List.filter (fun (c,fc,v) -> not (D.is_bot v)) paths in *)

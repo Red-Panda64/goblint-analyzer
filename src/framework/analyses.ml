@@ -280,7 +280,7 @@ sig
   include Spec
 
   val enter: (D.t, G.t, C.t, V.t) ctx -> lval option -> fundec -> exp list -> D.t
-  val split: D.t -> (D.t * D.t) list
+  val split: D.t -> (D.t * C.t * D.t) list
 end
 
 module type MCPA =

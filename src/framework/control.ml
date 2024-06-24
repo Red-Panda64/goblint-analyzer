@@ -419,7 +419,7 @@ struct
       let args = List.map (fun x -> MyCFG.unknown_exp) fd.sformals in
       let entered = Spec.enter ctx None fd args in
       let ents = Spec.split entered in
-      List.map (fun (_,s) -> fd, s) ents
+      List.map (fun (_,_,s) -> fd, s) ents
     in
 
     (try MyCFG.dummy_func.svar.vdecl <- (List.hd otherfuns).svar.vdecl with Failure _ -> ());
