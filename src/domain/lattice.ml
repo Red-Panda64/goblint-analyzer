@@ -104,6 +104,20 @@ struct
     Pretty.dprintf "%s: %a not equal %a" (Base.name ()) pretty x pretty y
 end
 
+module FakeWeak (Base: Printable.S) =
+struct
+  include Base
+  let leq = equal
+  let join x y = y
+  let widen = join
+  let meet x y = y
+  let narrow = meet
+  include NoBotTop
+
+  let pretty_diff () (x,y) =
+    Pretty.dprintf "%s: %a not equal %a" (Base.name ()) pretty x pretty y
+end
+
 module type PD =
 sig
   include Printable.S

@@ -12,7 +12,7 @@ module M = Messages
 
 module EnterDomain (D: Lattice.S) (C: Printable.S) =
 struct
-  module Set = SetDomain.Make (Lattice.Prod3 (D) (Lattice.Fake(C)) (D))
+  module Set = SetDomain.Make (Lattice.Prod3 (D) (Lattice.FakeWeak(C)) (D))
   include Lattice.Xor2 (D) (Set)
   type d = D.t
   type enter = Set.t
