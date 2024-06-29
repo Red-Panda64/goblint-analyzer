@@ -798,8 +798,13 @@ module Base =
         if sys_change.obsolete <> [] then
           Logs.debug "Destabilizing changed functions and primary old nodes ...";
         List.iter (fun k ->
-            if HM.mem stable k then
-              destabilize k
+            if HM.mem stable k then destabilize k;
+            let infl = HM.find_option side_dep k in
+            match infl with | None -> () | Some infl -> (fun infl -> VS.iter (fun x ->
+                if tracing then trace "sol2" "stable remove %a" S.Var.pretty_trace x;
+                HM.remove stable x;
+                Hooks.stable_remove x;
+                destabilize x) infl) infl;
           ) sys_change.obsolete;
 
         (* We remove all unknowns for program points in changed or removed functions from rho, stable, infl and wpoint *)
