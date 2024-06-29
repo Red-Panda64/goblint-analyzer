@@ -471,11 +471,17 @@ let createCFG = Timing.wrap "createCFG" createCFG
 
 let minimizeCFG (fw,bw) sk =
   let keep = H.create (H.length bw) in
-  let comp_keep t (_,f) =
+  let comp_keep t (e,f) =
     if (List.compare_length_with (H.find_default bw t []) 1 <> 0) || (List.compare_length_with (H.find_default fw t []) 1 <> 0) then
       H.replace keep t ();
     if (List.compare_length_with (H.find_default bw f []) 1 <> 0) || (List.compare_length_with (H.find_default fw f []) 1 <> 0) then
-      H.replace keep f ()
+      H.replace keep f ();
+    match e with
+    | [_, Edge.Proc _] -> H.replace keep f ()
+    (* Nodes with outgoing proc edges implicitly have multiple successors.
+       See the Enter and Combine nodes. *)
+    | es -> assert (Option.is_none @@ List.find_opt (fun e -> match e with | _, Edge.Proc _ -> true | _ -> false) es)
+    (* If this edge is already combined, there must not be a procedure call edge in it. *)
   in
   let comp_keep t es = List.iter (comp_keep t) es in
   H.iter comp_keep bw;

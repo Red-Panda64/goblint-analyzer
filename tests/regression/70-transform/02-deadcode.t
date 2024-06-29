@@ -218,26 +218,8 @@ Macintosh's diff(1) adds whitespace after the function names, strip with sed.
   @@ -54,0 +58,2 @@
   +  } else {
   +    return (7 - x);
-  @@ -65,0 +71,8 @@
-  +int uncalled1(void)
-  +{
-  +
-  +
-  +  {
-  +
-  +}
-  +}
-  @@ -79,0 +93,5 @@
-  +    if (i > 7) {
-  +      {
-  +      uncalled1();
-  +      }
+  @@ -150,0 +156,4 @@
   +    }
-  @@ -151,0 +170,4 @@
   +    {
   +    s += s;
   +    i ++;
-  +    }
-  @@ -203,0 +226,2 @@
-  +  uncalled1();
-  +  uncalled_but_referenced_function(3);
