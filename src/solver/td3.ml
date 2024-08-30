@@ -226,6 +226,8 @@ module Base =
     let solve st vs marshal =
       let reuse_stable = GobConfig.get_bool "incremental.stable" in
       let reuse_wpoint = GobConfig.get_bool "incremental.wpoint" in
+      let dead_globals = ref VS.empty in
+      let omitted_contributions = HM.create 10 in
       let data =
         match marshal with
         | Some data ->
@@ -384,7 +386,10 @@ module Base =
                           | Some prev_sides_x -> VS.iter (fun y ->
                               if Option.is_none @@ HM.find_option acc y then begin
                                 ignore @@ divided_side D_Narrow ~x y (S.Dom.bot ());
+                                let x: S.Var.t = x in
+                                HM.replace omitted_contributions x @@ VS.add y @@ HM.find_default omitted_contributions x VS.empty;
                                 if S.Dom.is_bot @@ HM.find rho y then
+                                  dead_globals := VS.add y !dead_globals;
                                   let casualties = S.postmortem y in
                                   List.iter (fun x -> solve x Widen) casualties
                               end;
