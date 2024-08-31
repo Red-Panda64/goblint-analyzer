@@ -386,8 +386,7 @@ module Base =
                           | Some prev_sides_x -> VS.iter (fun y ->
                               if Option.is_none @@ HM.find_option acc y then begin
                                 ignore @@ divided_side D_Narrow ~x y (S.Dom.bot ());
-                                let x: S.Var.t = x in
-                                HM.replace omitted_contributions x @@ VS.add y @@ HM.find_default omitted_contributions x VS.empty;
+                                HM.replace omitted_contributions y @@ VS.add x @@ HM.find_default omitted_contributions y VS.empty;
                                 if S.Dom.is_bot @@ HM.find rho y then
                                   dead_globals := VS.add y !dead_globals;
                                   let casualties = S.postmortem y in
@@ -1067,6 +1066,35 @@ module Base =
         HM.iter (fun k gas -> Logs.debug "%a (gas: %d)" S.Var.pretty_trace k gas) wpoint_gas;
         Logs.newline ();
       );
+
+      let remove_non_function_entries unknowns =
+        VS.filter (fun u -> match S.Var.node u with
+            | Function x when x = GoblintCil.dummyFunDec -> false
+            | Function _ -> true
+            | _ -> false
+          ) unknowns in
+      let all_unknowns = HM.fold (fun u _ -> VS.add u) rho VS.empty in
+      let killed_entries_count = VS.cardinal (remove_non_function_entries !dead_globals) in
+      let all_entries_count = VS.cardinal (remove_non_function_entries all_unknowns) in
+      Logs.info "Bottomized contextualized functions: %d of %d" killed_entries_count all_entries_count;
+
+      let all_contributions_count = HM.fold (fun k v acc -> acc + HM.length v) divided_side_effects 0 in
+      let omitted_contributions_count = HM.fold (fun k v acc -> acc + VS.cardinal v) omitted_contributions 0 in
+      (*let truly_omitted_contributions_count = HM.fold (fun y xs acc -> acc + VS.fold (fun x -> Option.bind (fun cs -> Option.bind (f) HM.find_option cs x) @@ HM.find_option divided_side_effects y) xs) omitted_contributions 0 in *)
+      let truly_omitted_contributions_count = HM.fold (fun y xs acc ->
+          VS.fold (fun x acc ->
+              acc + (
+                Option.map_default (fun is_bot -> if is_bot then 1 else 0) 1 @@
+                Option.bind (HM.find_option divided_side_effects y) (fun cs -> 
+                    Option.bind (HM.find_option cs x) (fun (d,_) ->
+                        Some (S.Dom.is_bot d)
+                      )
+                  )
+              )
+            ) xs acc
+        ) omitted_contributions 0 in
+      Logs.info "Omitted contributions: %d still bot of %d omitted of %d" truly_omitted_contributions_count omitted_contributions_count all_contributions_count;
+
 
       (* Prune other data structures than rho with reachable.
          These matter for the incremental data. *)
