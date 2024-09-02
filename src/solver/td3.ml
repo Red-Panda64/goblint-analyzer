@@ -1069,8 +1069,8 @@ module Base =
 
       let remove_non_function_entries unknowns =
         VS.filter (fun u -> match S.Var.node u with
-            | Function x when x = GoblintCil.dummyFunDec -> false
-            | Function _ -> true
+            | x when Node.equal x (Function GoblintCil.dummyFunDec) -> false
+            | FunctionEntry _ -> true
             | _ -> false
           ) unknowns in
       let all_unknowns = HM.fold (fun u _ -> VS.add u) rho VS.empty in
