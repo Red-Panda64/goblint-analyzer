@@ -1076,8 +1076,6 @@ module Base =
       let all_unknowns = HM.fold (fun u _ -> VS.add u) rho VS.empty in
       let killed_entries_count = VS.cardinal (remove_non_function_entries !dead_globals) in
       let all_entries_count = VS.cardinal (remove_non_function_entries all_unknowns) in
-      Logs.info "Bottomized contextualized functions: %d of %d" killed_entries_count all_entries_count;
-
       let all_contributions_count = HM.fold (fun k v acc -> acc + HM.length v) divided_side_effects 0 in
       let omitted_contributions_count = HM.fold (fun k v acc -> acc + VS.cardinal v) omitted_contributions 0 in
       (*let truly_omitted_contributions_count = HM.fold (fun y xs acc -> acc + VS.fold (fun x -> Option.bind (fun cs -> Option.bind (f) HM.find_option cs x) @@ HM.find_option divided_side_effects y) xs) omitted_contributions 0 in *)
@@ -1093,8 +1091,6 @@ module Base =
               )
             ) xs acc
         ) omitted_contributions 0 in
-      Logs.info "Omitted contributions: %d still bot of %d omitted of %d" truly_omitted_contributions_count omitted_contributions_count all_contributions_count;
-
 
       (* Prune other data structures than rho with reachable.
          These matter for the incremental data. *)
@@ -1277,6 +1273,15 @@ module Base =
       Post.post st (stable_reluctant_vs @ vs) rho;
 
       print_data_verbose data "Data after postsolve";
+
+      let omitted_to_dead_count = HM.fold (fun g ls acc -> if HM.mem rho g then acc else acc + VS.cardinal ls) omitted_contributions 0 in
+      let omitted_from_dead_count = HM.fold (fun g ls acc -> VS.fold (fun l acc -> if HM.mem rho l then acc else acc + 1) ls acc) omitted_contributions 0 in
+      Logs.info "Omitted contributions: %d still bot of %d omitted of %d; %d to dead; %d from dead" truly_omitted_contributions_count omitted_contributions_count all_contributions_count omitted_from_dead_count omitted_to_dead_count;
+
+      let truly_live_unknowns = HM.fold (fun u _ -> VS.add u) rho VS.empty in
+      let truly_live_entries_count = VS.cardinal (remove_non_function_entries truly_live_unknowns) in
+      let truly_dead_entries_count = all_entries_count - truly_live_entries_count in
+      Logs.info "Botified contextualized functions: %d botified of %d dead of %d total" killed_entries_count truly_dead_entries_count all_entries_count;
 
       verify_data data;
       (rho, {st; infl; sides; prev_sides; divided_side_effects; orphan_side_effects; rho; wpoint_gas; stable; side_dep; side_infl; var_messages; rho_write; dep})
